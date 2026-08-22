@@ -52,6 +52,7 @@ import {
   createBookmarkImportPreview,
   createBookmarkSpreadsheetBlob,
   createMultiLevelBookmarkSpreadsheetExampleBlob,
+  defaultSpreadsheetPathSeparator,
   fallbackIconSources,
   flattenBookmarks,
   getFaviconUrl,
@@ -97,6 +98,16 @@ type PendingImport = {
 
 type SettingsTab = "manage" | "bookmarks" | "backup" | "external";
 type BookmarkDraft = { title: string; url: string; description: string; parentId: string };
+
+const spreadsheetFieldHelp = [
+  { field: "分类路径", detail: "可选。用当前分隔符写出层级，例如“效率工作台 / 写作与协作”。" },
+  { field: "名称", detail: "可选。留空时会自动使用网址域名。" },
+  { field: "网址", detail: "必填。必须以 http:// 或 https:// 开头。" },
+  { field: "说明", detail: "可选。用于站内搜索和书签语义。" },
+  { field: "图标来源", detail: "可选。例如 favicon_im、google、custom 或 iconify。" },
+  { field: "自定义图标", detail: "仅在图标来源为 custom 时填写图片 URL。" },
+  { field: "Iconify 图标", detail: "仅在图标来源为 iconify 时填写，例如 logos:vitejs。" },
+];
 
 const emptyBookmarkDraft = (): BookmarkDraft => ({ title: "", url: "", description: "", parentId: ROOT_FOLDER_ID });
 
@@ -322,6 +333,7 @@ export default function Home() {
   const [bookmarkManagerLimit, setBookmarkManagerLimit] = useState(240);
   const [showTop, setShowTop] = useState(false);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  const [spreadsheetPathSeparator, setSpreadsheetPathSeparator] = useState(defaultSpreadsheetPathSeparator);
   const [pendingExport, setPendingExport] = useState<ExportKind | null>(null);
   const [exportUsername, setExportUsername] = useState("");
   const [exportPassword, setExportPassword] = useState("");
@@ -621,7 +633,7 @@ export default function Home() {
       const next = isJson
         ? parseBookmarkJson(JSON.parse(await file.text()))
         : isSpreadsheet
-          ? await parseBookmarkSpreadsheetFile(file)
+          ? await parseBookmarkSpreadsheetFile(file, spreadsheetPathSeparator)
           : parseBrowserBookmarkHtml(await file.text());
       setPendingImport({ nodes: next, fileName: file.name, source: isJson ? "json" : isSpreadsheet ? "spreadsheet" : "html", preview: createBookmarkImportPreview(next) });
     } catch (error) {
@@ -629,6 +641,17 @@ export default function Home() {
     } finally {
       event.target.value = "";
     }
+  }
+
+  function previewMultiLevelExample() {
+    const nodes = normalizeArchive({ bookmarks: sampleBookmarks });
+    setShowDataTools(false);
+    setPendingImport({
+      nodes,
+      fileName: "多级分类示例（仅预览，尚未写入）",
+      source: "spreadsheet",
+      preview: createBookmarkImportPreview(nodes),
+    });
   }
 
   function applyImport(mode: "replace" | "merge") {
@@ -855,6 +878,8 @@ export default function Home() {
                 <div className="data-tools-section-head"><span className="eyebrow">IMPORT</span><h3>导入书签数据</h3></div>
                 <button className="data-tool-primary" type="button" onClick={() => { setShowDataTools(false); importRef.current?.click(); }}><FileUp size={17} />选择 JSON / HTML / XLSX / CSV 文件</button>
                 <p>支持浏览器书签 HTML、本站归档 JSON、极光 Tab 原始 JSON、WebDesk 原始 JSON 和表格文件。解析后会先显示数据摘要与样本，确认后才会写入页面。</p>
+                <div className="spreadsheet-import-controls"><label><span>分类路径分隔符</span><input value={spreadsheetPathSeparator} maxLength={3} onChange={event => setSpreadsheetPathSeparator(event.target.value || defaultSpreadsheetPathSeparator)} aria-describedby="spreadsheet-separator-help" /><small id="spreadsheet-separator-help">默认 <code>/</code>；也可输入 <code>&gt;</code>、<code>|</code>、<code>→</code> 等字符。</small></label><button type="button" onClick={previewMultiLevelExample}><FileSpreadsheet size={15} />导入示例到预览</button></div>
+                <details className="spreadsheet-field-help"><summary><CircleHelp size={15} />表格字段在线说明</summary><dl>{spreadsheetFieldHelp.map(item => <div key={item.field}><dt>{item.field}</dt><dd>{item.detail}</dd></div>)}</dl></details>
                 <div className="template-downloads"><span>多级分类示例：</span><button type="button" onClick={() => void downloadMultiLevelSpreadsheetExample("xlsx")} title="下载多级分类 XLSX 示例"><FileSpreadsheet size={14} />XLSX 示例</button><button type="button" onClick={() => void downloadMultiLevelSpreadsheetExample("csv")} title="下载多级分类 CSV 示例"><FileSpreadsheet size={14} />CSV 示例</button><span>首次录入可下载空白模板：</span><button type="button" onClick={() => void downloadSpreadsheetTemplate("xlsx")}><FileSpreadsheet size={14} />XLSX 模板</button><button type="button" onClick={() => void downloadSpreadsheetTemplate("csv")}><FileSpreadsheet size={14} />CSV 模板</button></div>
               </section>
               <section className="data-tools-section">

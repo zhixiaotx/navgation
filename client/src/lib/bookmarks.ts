@@ -600,6 +600,7 @@ export const bookmarkSpreadsheetColumns = {
 
 export type BookmarkSpreadsheetFormat = "xlsx" | "csv";
 export type BookmarkSpreadsheetRow = Record<(typeof bookmarkSpreadsheetColumns)[keyof typeof bookmarkSpreadsheetColumns], string>;
+export const defaultSpreadsheetPathSeparator = "/";
 
 const spreadsheetHeaders = Object.values(bookmarkSpreadsheetColumns);
 
@@ -619,9 +620,9 @@ function readSpreadsheetCell(row: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
-function spreadsheetPath(value: string) {
+function spreadsheetPath(value: string, separator = defaultSpreadsheetPathSeparator) {
   return value
-    .split(/\s*\/\s*/)
+    .split(separator || defaultSpreadsheetPathSeparator)
     .map(segment => segment.trim())
     .filter(Boolean);
 }
@@ -645,7 +646,7 @@ export function bookmarkNodesToSpreadsheetRows(nodes: BookmarkNode[], ancestry: 
 /**
  * 将表格行按“分类路径”重新组装为多级目录。相同路径的分类会复用同一个文件夹，从而自动生成左侧树。
  */
-export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknown>>): BookmarkNode[] {
+export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknown>>, pathSeparator = defaultSpreadsheetPathSeparator): BookmarkNode[] {
   const root: BookmarkNode[] = [];
 
   for (const row of rows) {
@@ -653,7 +654,7 @@ export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknow
     if (!/^https?:\/\//i.test(url)) continue;
 
     const title = readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.title, "标题", "title", "name"]) || getHostname(url) || "未命名书签";
-    const path = spreadsheetPath(readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.categoryPath, "分类", "categoryPath", "category"]));
+    const path = spreadsheetPath(readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.categoryPath, "分类", "categoryPath", "category"]), pathSeparator);
     let target = root;
 
     for (const segment of path) {
@@ -689,18 +690,18 @@ export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknow
   return root;
 }
 
-export async function parseBookmarkSpreadsheetArrayBuffer(data: ArrayBuffer): Promise<BookmarkNode[]> {
+export async function parseBookmarkSpreadsheetArrayBuffer(data: ArrayBuffer, pathSeparator = defaultSpreadsheetPathSeparator): Promise<BookmarkNode[]> {
   const XLSX = await loadXlsx();
   const workbook = XLSX.read(data, { type: "array", cellDates: false });
   const firstSheet = workbook.SheetNames[0];
   if (!firstSheet) throw new Error("表格中没有可读取的工作表。");
   const sheet = workbook.Sheets[firstSheet];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
-  return spreadsheetRowsToBookmarkNodes(rows);
+  return spreadsheetRowsToBookmarkNodes(rows, pathSeparator);
 }
 
-export async function parseBookmarkSpreadsheetFile(file: Pick<File, "arrayBuffer">): Promise<BookmarkNode[]> {
-  return parseBookmarkSpreadsheetArrayBuffer(await file.arrayBuffer());
+export async function parseBookmarkSpreadsheetFile(file: Pick<File, "arrayBuffer">, pathSeparator = defaultSpreadsheetPathSeparator): Promise<BookmarkNode[]> {
+  return parseBookmarkSpreadsheetArrayBuffer(await file.arrayBuffer(), pathSeparator);
 }
 
 /** 生成含分类路径、名称、网址和可选图标字段的 XLSX 或带 UTF-8 BOM 的 CSV。 */

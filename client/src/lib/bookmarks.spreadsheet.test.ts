@@ -41,6 +41,16 @@ describe("bookmark spreadsheet interchange", () => {
     expect(countBookmarks(nodes)).toBe(3);
   });
 
+  it("rebuilds categories with a user-selected literal separator", () => {
+    const nodes = spreadsheetRowsToBookmarkNodes([{
+      [bookmarkSpreadsheetColumns.categoryPath]: "工作 > 开发 > 前端",
+      [bookmarkSpreadsheetColumns.title]: "Vite",
+      [bookmarkSpreadsheetColumns.url]: "https://vite.dev/",
+    }], ">");
+
+    expect(bookmarkNodesToSpreadsheetRows(nodes)[0]?.[bookmarkSpreadsheetColumns.categoryPath]).toBe("工作 / 开发 / 前端");
+  });
+
   it("exports and imports CSV without losing paths or optional icon fields", async () => {
     const source = spreadsheetRowsToBookmarkNodes([{
       [bookmarkSpreadsheetColumns.categoryPath]: "资料 / 设计",
