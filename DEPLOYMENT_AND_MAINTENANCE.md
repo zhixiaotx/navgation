@@ -32,6 +32,8 @@
 2. 等待 **Build and publish gh-page** 工作流成功。
 3. **Settings → Pages**：选择 **Deploy from a branch**，分支选 `gh-page`，目录选 `/(root)`。
 
+工作流会先通过 `pnpm/action-setup@v4` 安装与本项目 `packageManager` 字段一致的 **pnpm 10.4.1**，然后才启用 `actions/setup-node` 的 pnpm 缓存。这个顺序避免 `setup-node` 在 pnpm 尚不可用时出现 `Unable to locate executable file: pnpm`。
+
 ### Cloudflare Pages、Vercel 与 Netlify
 
 Cloudflare Pages：构建命令 `pnpm build`，输出目录 `dist/public`，Node.js 22。也可运行：
