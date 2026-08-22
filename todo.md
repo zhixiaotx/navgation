@@ -110,7 +110,7 @@
 - [x] 修复 GitHub Pages 工作流中 pnpm 不可执行问题，并验证构建产物发布路径。
 - [x] 将 GitHub Pages 工作流改用 npm，消除 pnpm 版本冲突并验证静态发布构建。
 - [x] 将项目文档中的部署、运行与维护命令统一更新为 npm。
-- [ ] 排查并修复 GitHub Pages 部署成功后仍返回 404 的发布配置或静态站点问题。
-- [ ] 推送 GitHub Pages 子路径路由修复并确认 deploy-gh-page 工作流成功完成。
-- [ ] 重新访问公开 GitHub Pages 首页，确认不再显示应用内 404。
+- [x] 排查并修复 GitHub Pages 部署成功后仍返回 404 的发布配置或静态站点问题。
+- [x] 推送 GitHub Pages 子路径路由修复并确认 deploy-gh-page 工作流成功完成。
+- [x] 等待 GitHub Pages/CDN 缓存刷新后，重新访问公开首页确认不再显示应用内 404。
 - [x] 移除导出校验界面中显示的账号与密码提示，保留既有导出校验逻辑。

@@ -66,6 +66,6 @@ README 第 6.5 节后续渲染复核：已在 6.5→6.6、6.6→6.7、6.7→7 �
 
 GitHub Pages 工作流验证：部署工作流现使用 Node 22、npm 缓存和根目录 `package-lock.json`。根目录 `.npmrc` 以 `legacy-peer-deps=true` 兼容 `@builder.io/vite-plugin-jsx-loc` 与 Vite 7 的历史 peer dependency 声明，因此工作流可使用标准 `npm ci`。已在隔离副本中完成 `npm ci`、`npm run check`、`npm test` 和 `npm run build`；7 个测试文件、24 个测试全部通过，`dist/public/index.html` 已生成，`git diff --check` 无输出。构建仅保留既有的大资源块提示，未影响生成或发布目录。
 
-GitHub Pages 子路径路由排查：GitHub Pages API 显示站点来源为 `gh-page / (root)`，分支根目录也存在 `index.html`，但实际访问 `https://zhixiaotx.github.io/navgation/` 时进入应用内 NotFound。根因是 Wouter 将仓库子路径 `/navgation/` 视为未知路由。现已将 Vite 的相对基础路径转换为 Wouter 路由前缀，并新增根路径及仓库子路径的单元测试；待本次检查点推送后由 GitHub Actions 发布验证。
+GitHub Pages 子路径路由排查：GitHub Pages API 显示站点来源为 `gh-page / (root)`，分支根目录也存在 `index.html`，但实际访问 `https://zhixiaotx.github.io/navgation/` 时进入应用内 NotFound。根因是 Wouter 将仓库子路径 `/navgation/` 视为未知路由。现已将 Vite 的相对基础路径转换为 Wouter 路由前缀，并新增根路径及仓库子路径的单元测试。检查点推送后，`Build and publish gh-page` 工作流已成功完成；无缓存请求和普通公开根地址复测均已实际加载完整书签导航，而非 404。此前已缓存旧首页的浏览器可通过强制刷新获取新版本。
 
 导出凭据展示修正：已移除“导入与导出”数据工具弹层中直接展示管理员账号和密码的段落。实际打开数据工具后，导出选项下方仅保留功能入口与设置跳转；页面内检索不到被移除的密码文本。导出时的账号、密码输入框与浏览器端校验逻辑均未改动。
