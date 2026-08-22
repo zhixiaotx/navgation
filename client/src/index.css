@@ -156,6 +156,7 @@
 .tool-trigger, .theme-switch { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--paper) 88%, transparent); color: var(--ink); font-size: 12px; font-weight: 600; transition: border-color .16s var(--ease-out), background .16s var(--ease-out), transform .16s var(--ease-out); }
 .tool-trigger:hover, .theme-switch:hover { border-color: color-mix(in srgb, var(--archive-blue) 55%, var(--line)); background: var(--archive-blue-pale); }
 .rotate-180 { transform: rotate(180deg); }
+.responsive-index { display: none; }
 
 .data-console { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(130px, .7fr) minmax(210px, .95fr); gap: 25px; align-items: center; margin: 22px 0 0; padding: 26px 28px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper-deep); overflow: hidden; box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 5%, transparent); }
 .data-console::after { content: ""; position: absolute; z-index: -1; inset: 0; background: linear-gradient(105deg, transparent 35%, color-mix(in srgb, var(--archive-blue) 5%, transparent)); pointer-events: none; }
@@ -274,11 +275,17 @@
   .archive-shell { display: block; }
   .archive-sidebar { position: relative; width: auto; height: auto; min-height: 0; padding: 16px 18px; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .brand-lockup { padding: 0; }
+  .brand-lockup::after { display: none; }
   .archive-nav, .sidebar-footnote { display: none; }
   .archive-main { padding: 0 18px; }
   .topbar { min-height: 65px; }
   .topbar-intro { display: none; }
   .topbar-actions { margin-left: auto; }
+  .responsive-index { display: flex; gap: 7px; margin: 11px -18px 0; padding: 0 18px 11px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .responsive-index::-webkit-scrollbar { display: none; }
+  .responsive-index button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; flex: 0 0 auto; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--paper) 88%, transparent); color: var(--ink-soft); font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .responsive-index button span { color: var(--archive-blue); font-size: 9px; font-variant-numeric: tabular-nums; }
+  .responsive-index button.is-active { border-color: var(--archive-blue); background: var(--archive-blue-pale); color: var(--archive-blue-deep); }
   .search-stage { min-height: 310px; margin: 18px 0 28px; }
   .search-stage-content { padding: 34px 28px 25px; }
   .data-console { grid-template-columns: 1fr; gap: 18px; }
@@ -287,7 +294,7 @@
 
 @media (max-width: 610px) {
   .tool-trigger span, .theme-switch span { display: none; }
-  .tool-trigger, .theme-switch { width: 36px; justify-content: center; padding: 0; }
+  .tool-trigger, .theme-switch { width: 42px; min-height: 42px; justify-content: center; padding: 0; }
   .search-stage { min-height: 355px; }
   .search-stage::before { right: -28px; top: 38px; width: 118px; height: 144px; }
   .search-stage::after { right: 1px; top: 57px; font-size: 27px; }
@@ -314,4 +321,21 @@
   .import-choice { padding: 25px; }
   .import-choice h2 { font-size: 27px; }
   .import-choice-actions { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 380px) {
+  .archive-sidebar { padding-inline: 14px; }
+  .archive-main { padding-inline: 14px; }
+  .responsive-index { margin-inline: -14px; padding-inline: 14px; }
+  .search-stage-content { padding-inline: 18px; }
+  .heading-copy h1 { font-size: 33px; }
+  .search-tools button { padding-inline: 10px; }
+  .bookmark-card { min-height: 84px; padding: 11px; }
+}
+
+@media (min-width: 841px) and (max-width: 1080px) {
+  .archive-main { padding-inline: 30px; }
+  .data-console { grid-template-columns: 1.1fr .75fr; }
+  .data-console-actions { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .bookmark-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

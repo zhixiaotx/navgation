@@ -365,6 +365,17 @@ export default function Home() {
           </div>
         </header>
 
+        <nav className="responsive-index" aria-label="移动端书签分类">
+          <button type="button" className={selectedFolder === "all" || isFiltering ? "is-active" : ""} onClick={() => selectFolder("all")}>
+            全部 <span>{totalBookmarks}</span>
+          </button>
+          {topFolders.map(folder => (
+            <button key={folder.id} type="button" className={selectedFolder === folder.id ? "is-active" : ""} onClick={() => selectFolder(folder.id)}>
+              {folder.title} <span>{countBookmarks(folder.children)}</span>
+            </button>
+          ))}
+        </nav>
+
         {showTools && (
           <section className="data-console" aria-label="数据导入导出">
             <div className="data-console-copy">
