@@ -45,23 +45,22 @@
 
 ## 3. 最快上手
 
-需要 Node.js 22 与 pnpm。项目根目录执行：
+需要 Node.js 22 与 npm。项目根目录执行：
 
 ```bash
-corepack enable
-pnpm install
-pnpm dev
+npm ci
+npm run dev
 ```
 
 常用检查命令：
 
 ```bash
-pnpm check
-pnpm test
-pnpm build
+npm run check
+npm test
+npm run build
 ```
 
-`pnpm build` 会生成 `dist/public/` 静态前端及 `dist/index.js` Node 服务端。完整全栈构建产物可用 `pnpm start` 运行。
+`npm run build` 会生成 `dist/public/` 静态前端及 `dist/index.js` Node 服务端。完整全栈构建产物可用 `npm run start` 运行。
 
 ## 4. 重要文件与目录
 
@@ -129,7 +128,7 @@ pnpm build
 | `iconSource` | 书签 | 可选，例如 `favicon_im`、`favicon_iowen`、`google`、`logo_surf`、`custom`、`iconify` |
 | `customIcon` / `iconifyIcon` | 书签 | 对应 `custom` / `iconify` 时填写 |
 
-修改默认数据前，先从网页导出 JSON 备份，再替换该文件，最后运行 `pnpm check && pnpm build`。更新默认 JSON 不会覆盖已写入 LocalStorage 的当前浏览器书签；如需重新加载默认目录，请删除 `archive-index-bookmarks` 和 `archive-index-default-version` 后刷新。
+修改默认数据前，先从网页导出 JSON 备份，再替换该文件，最后运行 `npm run check && npm run build`。更新默认 JSON 不会覆盖已写入 LocalStorage 的当前浏览器书签；如需重新加载默认目录，请删除 `archive-index-bookmarks` 和 `archive-index-default-version` 后刷新。
 
 ## 6. 数据工具：导入与导出
 

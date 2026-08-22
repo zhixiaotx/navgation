@@ -20,9 +20,9 @@
 | 平台 | 构建命令 | 发布目录 |
 | --- | --- | --- |
 | GitHub Pages | 工作流执行 `npm run check && npm run build` | `gh-page` 分支根目录 |
-| Cloudflare Pages | `pnpm build` | `dist/public` |
-| Vercel 静态输出 | `pnpm build` | `dist/public` |
-| Netlify | `pnpm build` | `dist/public` |
+| Cloudflare Pages | `npm run build` | `dist/public` |
+| Vercel 静态输出 | `npm run build` | `dist/public` |
+| Netlify | `npm run build` | `dist/public` |
 
 ### GitHub Pages
 
@@ -32,35 +32,35 @@
 2. 等待 **Build and publish gh-page** 工作流成功。
 3. **Settings → Pages**：选择 **Deploy from a branch**，分支选 `gh-page`，目录选 `/(root)`。
 
-工作流通过 `actions/setup-node@v4` 使用 **npm 缓存** 和根目录的 `package-lock.json`，随后执行 `npm ci`、类型检查与静态构建。根目录 `.npmrc` 中的 `legacy-peer-deps=true` 用于兼容当前 Vite 插件的历史 peer dependency 声明。项目保留 `pnpm-lock.yaml` 和 `packageManager` 字段，供本地既有 pnpm 开发流程继续使用；GitHub Pages 不再安装或调用 pnpm，因此不会触发 pnpm 版本冲突。
+工作流通过 `actions/setup-node@v4` 使用 **npm 缓存** 和根目录的 `package-lock.json`，随后执行 `npm ci`、类型检查与静态构建。根目录 `.npmrc` 中的 `legacy-peer-deps=true` 用于兼容当前 Vite 插件的历史 peer dependency 声明；GitHub Pages 的安装、缓存与构建均由 npm 执行。
 
 ### Cloudflare Pages、Vercel 与 Netlify
 
-Cloudflare Pages：构建命令 `pnpm build`，输出目录 `dist/public`，Node.js 22。也可运行：
+Cloudflare Pages：构建命令 `npm run build`，输出目录 `dist/public`，Node.js 22。也可运行：
 
 ```bash
-pnpm build
-pnpm dlx wrangler pages deploy dist/public --project-name bookmark-navigation
+npm run build
+npx wrangler pages deploy dist/public --project-name bookmark-navigation
 ```
 
 Vercel 与 Netlify 使用相同的构建命令、输出目录和 Node 版本；项目中的 `vercel.json`、`netlify.toml`、`wrangler.toml` 已保存对应静态配置。[2] [3] [4]
 
 ## 3. 全栈部署边界
 
-若需登录、云端备份、恢复或外部备份，必须运行 Node 服务端、MySQL、OAuth 和受管理对象存储。部署前先设置平台提供的系统变量及所需外部备份安全变量；不要提交真实 `.env`。数据库结构变更顺序是：修改 `drizzle/schema.ts` → `pnpm drizzle-kit generate` → 审阅 SQL → 执行迁移。
+若需登录、云端备份、恢复或外部备份，必须运行 Node 服务端、MySQL、OAuth 和受管理对象存储。部署前先设置平台提供的系统变量及所需外部备份安全变量；不要提交真实 `.env`。数据库结构变更顺序是：修改 `drizzle/schema.ts` → `npm run db:push` → 审阅生成的 SQL → 执行迁移。
 
 ## 4. 验证与维护命令
 
 | 命令 | 用途 |
 | --- | --- |
-| `pnpm check` | TypeScript 类型检查 |
-| `pnpm test` | 运行书签管理、表格、云端和外部备份测试 |
-| `pnpm build` | 构建前端静态产物与 Node 服务端 |
-| `pnpm exec tsx scripts/bookmark-import-smoke.mjs` | 验证 HTML 书签解析和递归增量合并 |
-| `pnpm exec tsx scripts/standalone-export-smoke.mjs` | 验证离线单页导航导出 |
-| `pnpm dev` / `pnpm start` | 启动开发服务 / 已构建的全栈服务 |
+| `npm run check` | TypeScript 类型检查 |
+| `npm test` | 运行书签管理、表格、云端和外部备份测试 |
+| `npm run build` | 构建前端静态产物与 Node 服务端 |
+| `npx tsx scripts/bookmark-import-smoke.mjs` | 验证 HTML 书签解析和递归增量合并 |
+| `npx tsx scripts/standalone-export-smoke.mjs` | 验证离线单页导航导出 |
+| `npm run dev` / `npm run start` | 启动开发服务 / 已构建的全栈服务 |
 
-推荐顺序：先在网页中验证操作，再运行 `pnpm check`、`pnpm test`、`pnpm build`；确认默认目录不含隐私链接后再提交代码。
+推荐顺序：先在网页中验证操作，再运行 `npm run check`、`npm test`、`npm run build`；确认默认目录不含隐私链接后再提交代码。
 
 ## 5. 常见问题
 
