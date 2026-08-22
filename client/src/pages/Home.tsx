@@ -15,6 +15,7 @@ import {
   ExternalLink,
   FileArchive,
   FileJson2,
+  FileSpreadsheet,
   FileUp,
   FolderClosed,
   FolderOpen,
@@ -36,6 +37,7 @@ import {
   BookmarkItem,
   BookmarkNode,
   countBookmarks,
+  createBookmarkSpreadsheetBlob,
   fallbackIconSources,
   flattenBookmarks,
   getFaviconUrl,
@@ -46,6 +48,7 @@ import {
   mergeBookmarkNodes,
   normalizeArchive,
   parseBrowserBookmarkHtml,
+  parseBookmarkSpreadsheetFile,
   sampleBookmarks,
   toBrowserBookmarkHtml,
 } from "@/lib/bookmarks";
@@ -57,11 +60,11 @@ const DEFAULT_DATA_VERSION = "2026-08-22";
 const EXPORT_USERNAME = "admin";
 const EXPORT_PASSWORD = "123456";
 
-type ExportKind = "json" | "html" | "standalone";
+type ExportKind = "json" | "html" | "xlsx" | "csv" | "standalone";
 type PendingImport = {
   nodes: BookmarkNode[];
   fileName: string;
-  jsonContent?: string;
+  source: "json" | "html" | "spreadsheet";
 };
 
 const searchEngines = [
@@ -97,6 +100,22 @@ function downloadFile(filename: string, content: string, type: string) {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importBackupFileName(fileName: string) {
+  const base = fileName.replace(/\.(?:json|html?|csv|xlsx)$/i, "") || "bookmark-import";
+  return `${base}-import.json`;
 }
 
 function firstFolderId(nodes: BookmarkNode[]): string {
@@ -398,10 +417,15 @@ export default function Home() {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const content = await file.text();
-      const isJson = file.name.toLowerCase().endsWith(".json");
-      const next = isJson ? normalizeArchive(JSON.parse(content)) : parseBrowserBookmarkHtml(content);
-      setPendingImport({ nodes: next, fileName: file.name, jsonContent: isJson ? content : undefined });
+      const lowerName = file.name.toLowerCase();
+      const isJson = lowerName.endsWith(".json");
+      const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".csv");
+      const next = isJson
+        ? normalizeArchive(JSON.parse(await file.text()))
+        : isSpreadsheet
+          ? await parseBookmarkSpreadsheetFile(file)
+          : parseBrowserBookmarkHtml(await file.text());
+      setPendingImport({ nodes: next, fileName: file.name, source: isJson ? "json" : isSpreadsheet ? "spreadsheet" : "html" });
     } catch (error) {
       toast.error("导入未完成", { description: error instanceof Error ? error.message : "无法读取该文件。" });
     } finally {
@@ -421,10 +445,12 @@ export default function Home() {
     toast.success(mode === "replace" ? "书签已覆盖导入" : "书签已增量导入", {
       description: mode === "replace" ? `已按原始层级与顺序建立 ${countBookmarks(next)} 个入口。` : "已合并同名分类，按 URL 去重，并保留原有顺序。",
     });
-    if (imported.jsonContent && isAuthenticated) {
-      saveCloudBackup.mutate({ fileName: imported.fileName, content: imported.jsonContent, source: "import" });
-    } else if (imported.jsonContent) {
-      toast.message("JSON 已导入本地", { description: "登录后可使用“同步当前数据”将本地书签保存为云端备份。" });
+    const backupContent = JSON.stringify(archiveForExport(next, iconSource), null, 2);
+    if (isAuthenticated) {
+      saveCloudBackup.mutate({ fileName: importBackupFileName(imported.fileName), content: backupContent, source: "import" });
+    } else {
+      const sourceLabel = imported.source === "spreadsheet" ? "表格数据" : imported.source === "html" ? "浏览器书签" : "JSON 数据";
+      toast.message(`${sourceLabel}已导入本地`, { description: "登录后可使用“同步当前数据”将当前书签保存为云端备份。" });
     }
   }
 
@@ -467,9 +493,25 @@ export default function Home() {
     toast.success("已导出浏览器书签 HTML");
   }
 
-  function exportStandalone() {
-    downloadFile("bookmark-navigation.html", createStandaloneNavigation(bookmarks, iconSource), "text/html;charset=utf-8");
-    toast.success("已导出单页导航", { description: "该 HTML 文件可本地双击打开，并保留搜索、分类、主题和数据工具。" });
+  async function exportSpreadsheet(format: "xlsx" | "csv") {
+    try {
+      const extension = format === "xlsx" ? "xlsx" : "csv";
+      const blob = await createBookmarkSpreadsheetBlob(bookmarks, format);
+      downloadBlob(`bookmark-archive.${extension}`, blob);
+      toast.success(`已导出 ${format === "xlsx" ? "XLSX" : "CSV"} 数据`, { description: "表格中的“分类路径”可在导入时自动还原为多级分类。" });
+    } catch (error) {
+      toast.error("表格导出未完成", { description: error instanceof Error ? error.message : "无法生成表格文件。" });
+    }
+  }
+
+  async function exportStandalone() {
+    try {
+      const { default: xlsxBundle } = await import("xlsx/dist/xlsx.full.min.js?raw");
+      downloadFile("bookmark-navigation.html", createStandaloneNavigation(bookmarks, iconSource, xlsxBundle), "text/html;charset=utf-8");
+      toast.success("已导出单页导航", { description: "该 HTML 文件可本地双击打开，并保留搜索、分类、主题及 XLSX、CSV 数据工具。" });
+    } catch (error) {
+      toast.error("单页导航导出未完成", { description: error instanceof Error ? error.message : "无法嵌入表格工具。" });
+    }
   }
 
   function requestExport(kind: ExportKind) {
@@ -490,7 +532,9 @@ export default function Home() {
     setExportPassword("");
     if (selectedExport === "json") exportJson();
     if (selectedExport === "html") exportHtml();
-    if (selectedExport === "standalone") exportStandalone();
+    if (selectedExport === "xlsx") void exportSpreadsheet("xlsx");
+    if (selectedExport === "csv") void exportSpreadsheet("csv");
+    if (selectedExport === "standalone") void exportStandalone();
   }
 
   return (
@@ -594,19 +638,21 @@ export default function Home() {
             <div className="data-console-copy">
               <span>ARCHIVE CONTROL</span>
               <h2>导入、整理，再带着它走。</h2>
-              <p>可读取 Chrome、Edge、Firefox 等浏览器导出的 HTML 书签，也可导入本页导出的 JSON 数据。登录后，JSON 可自动保存为你的私有云端备份。</p>
+              <p>可读取 Chrome、Edge、Firefox 等浏览器导出的 HTML 书签，也可导入本页导出的 JSON、XLSX 或 CSV。表格中的“分类路径”会自动还原为多级目录。登录后，导入结果会保存为你的私有 JSON 云端备份。</p>
             </div>
             <div className="intake-stamp" aria-hidden="true"><span>IN</span><i>01</i><small>ARCHIVE</small></div>
             <div className="data-console-actions">
-              <button className="primary-tool" type="button" onClick={() => importRef.current?.click()}><FileUp size={17} />导入 JSON / HTML</button>
+              <button className="primary-tool" type="button" onClick={() => importRef.current?.click()}><FileUp size={17} />导入 JSON / HTML / XLSX / CSV</button>
               <button type="button" onClick={() => requestExport("json")}><FileJson2 size={17} />导出 JSON</button>
               <button type="button" onClick={() => requestExport("html")}><Download size={17} />导出书签 HTML</button>
+              <button type="button" onClick={() => requestExport("xlsx")}><FileSpreadsheet size={17} />导出 XLSX</button>
+              <button type="button" onClick={() => requestExport("csv")}><FileSpreadsheet size={17} />导出 CSV</button>
               <button type="button" onClick={() => requestExport("standalone")}><Archive size={17} />导出单页导航</button>
             </div>
             <section className="cloud-backup-panel" aria-label="云端书签备份">
               <div className="cloud-backup-copy">
                 <span><Cloud size={16} /> 云端备份</span>
-                <p>{isAuthenticated ? `已登录为 ${user?.name || "当前用户"}。导入的 JSON 会自动保存；也可同步本浏览器当前数据。` : "登录后可把 JSON 导入文件和当前浏览器书签保存为私有云端备份。"}</p>
+                <p>{isAuthenticated ? `已登录为 ${user?.name || "当前用户"}。导入的书签数据会自动规范化并保存；也可同步本浏览器当前数据。` : "登录后可将导入的书签数据和当前浏览器书签保存为私有云端备份。"}</p>
               </div>
               {isAuthenticated ? (
                 <div className="cloud-backup-controls">
@@ -697,7 +743,7 @@ export default function Home() {
         </footer>
       </main>
 
-      <input ref={importRef} className="sr-only" type="file" accept=".json,.html,.htm,application/json,text/html" onChange={importBookmarks} />
+      <input ref={importRef} className="sr-only" type="file" accept=".json,.html,.htm,.xlsx,.csv,application/json,text/html,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importBookmarks} />
       {pendingImport && (
         <div className="import-overlay" role="dialog" aria-modal="true" aria-labelledby="import-choice-title">
           <section className="import-choice">
@@ -716,7 +762,7 @@ export default function Home() {
         <div className="import-overlay" role="dialog" aria-modal="true" aria-labelledby="export-auth-title">
           <form className="import-choice export-auth" onSubmit={verifyAndExport}>
             <span className="eyebrow">EXPORT AUTHORIZATION</span>
-            <h2 id="export-auth-title">验证后导出{pendingExport === "json" ? " JSON 数据" : pendingExport === "html" ? "书签 HTML" : "单页导航"}</h2>
+            <h2 id="export-auth-title">验证后导出{pendingExport === "json" ? " JSON 数据" : pendingExport === "html" ? "书签 HTML" : pendingExport === "xlsx" ? " XLSX 数据" : pendingExport === "csv" ? " CSV 数据" : "单页导航"}</h2>
             <p>导出操作需要管理员验证。此验证仅在当前浏览器中进行，不会上传账号或密码。</p>
             <div className="export-credential-fields">
               <label>账号<input value={exportUsername} onChange={event => setExportUsername(event.target.value)} autoComplete="username" placeholder="请输入账号" required /></label>

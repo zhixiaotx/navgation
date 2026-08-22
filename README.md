@@ -16,9 +16,9 @@
 | 网址卡片 | 仅展示图标和名称；无图标底板、无网址元信息；卡片网格自适应宽度 | `Home.tsx`、`index.css` |
 | 图标服务 | 默认 `favicon.im`；国内服务优先；失败时自动回退；支持文字、Iconify、自定义图标 | `client/src/lib/bookmarks.ts` |
 | 搜索 | 站内即时筛选，并支持 20 个国内外站外搜索引擎，默认必应 | `Home.tsx` |
-| 导入 | 支持 JSON 与 Chrome、Edge、Firefox 导出的标准 HTML 书签 | `bookmarks.ts` |
+| 导入 | 支持 JSON、标准浏览器 HTML、XLSX 与 CSV；表格可按分类路径还原多级目录 | `bookmarks.ts` |
 | 导入策略 | 覆盖导入或递归增量合并；同名分类合并、URL 去重、保持原有顺序 | `mergeBookmarkNodes` |
-| 导出 | JSON、浏览器书签 HTML、离线单页导航；均要求 `admin / 123456` | `Home.tsx`、`standalone.ts` |
+| 导出 | JSON、浏览器书签 HTML、XLSX、CSV、离线单页导航；均要求 `admin / 123456` | `Home.tsx`、`standalone.ts` |
 | 主题与辅助 | 日夜模式、右下角一键置顶、键盘 Enter 站外搜索 | `ThemeContext.tsx`、`Home.tsx` |
 | 响应式体验 | 桌面侧栏、平板多列、手机横向索引与完整目录入口、单列触控卡片 | `client/src/index.css` |
 | 云端备份 | 登录后自动备份导入的 JSON，或将当前 LocalStorage 一键同步、恢复 | `server/routers.ts`、`server/storage.ts` |
@@ -72,7 +72,7 @@ pnpm start
 | `client/src/App.tsx` | 顶层路由、主题提供器、全局提示 | 新增页面或调整全局外壳 |
 | `client/src/pages/Home.tsx` | 主页面：分类树、搜索、导入导出、默认数据、云端备份 UI | 调整绝大多数页面功能 |
 | `client/src/index.css` | 档案风格视觉系统、卡片、侧栏、移动端断点 | 改颜色、尺寸、布局、触控体验 |
-| `client/src/lib/bookmarks.ts` | 书签类型、JSON 规范化、HTML 解析、图标 URL、合并、浏览器 HTML 导出 | 改数据格式、图标服务、导入规则 |
+| `client/src/lib/bookmarks.ts` | 书签类型、JSON 规范化、HTML、XLSX、CSV 解析、图标 URL、合并和多格式导出 | 改数据格式、图标服务、导入规则 |
 | `client/src/lib/standalone.ts` | 生成可离线双击打开的完整导航 HTML | 改离线导出页面功能 |
 | `client/src/contexts/ThemeContext.tsx` | 日夜模式状态 | 改默认主题或切换机制 |
 | `client/src/_core/hooks/useAuth.ts` | 当前登录用户、登录状态和退出操作 | 调整云端备份的登录体验 |
@@ -89,6 +89,7 @@ pnpm start
 | `.github/workflows/deploy-gh-page.yml` | 从 `main` 构建并推送静态成品到 `gh-page` 分支 | 改静态发布工作流 |
 | `vite.config.ts` | Vite 构建配置；`base: "./"` 保证相对路径 | 改构建目录或资源基路径 |
 | `netlify.toml`、`vercel.json`、`wrangler.toml` | 三个平台的静态部署配置 | 对应平台项目名或构建要求变化时 |
+| `client/src/lib/bookmarks.spreadsheet.test.ts` | CSV、XLSX 的分类路径重建和双向转换回归测试 | 修改表格格式后必须运行 `pnpm test` |
 | `scripts/*.mjs` | 默认数据合并、导入回归、离线导出回归脚本 | 调整数据转换或回归验证时 |
 | `todo.md` | 每轮功能修改与验证记录 | 跟踪后续开发工作 |
 
@@ -162,31 +163,55 @@ archive-index-default-version
 
 ## 6. 导入、导出与云端同步
 
-### 6.1 导入 JSON 或浏览器 HTML
+### 6.1 导入 JSON、浏览器 HTML、XLSX 或 CSV
 
-打开 **数据工具 → 导入 JSON / HTML**，选择文件后系统会解析书签，并提示选择导入策略。
+打开 **数据工具 → 导入 JSON / HTML / XLSX / CSV**，选择文件后系统会解析书签，并提示选择导入策略。
 
 | 策略 | 结果 | 适用场景 |
 | --- | --- | --- |
 | 覆盖导入 | 用本次文件完整替换当前浏览器书签 | 切换到另一套目录或重建导航 |
 | 增量导入 | 同名分类递归合并、URL 去重，新增内容保留原顺序 | 周期性导入浏览器新增书签 |
 
-JSON 可以直接保留完整字段。HTML 导入遵循标准浏览器书签结构，目录与网址顺序会被保留。HTML 解析后不会保留原 HTML 文件字节；如需云端保存这份转换后的结果，请在导入完成后点击 **同步当前数据**。
+JSON 可以直接保留完整字段。HTML 导入遵循标准浏览器书签结构，目录与网址顺序会被保留。XLSX 和 CSV 使用“每行一个网址”的交换格式，导入时会按“分类路径”自动创建或复用文件夹，因此左侧分类树也会同步生成多级结构。
 
-### 6.2 从 LocalStorage 迁移到云端
+### 6.2 XLSX 与 CSV 表格格式
+
+导出 XLSX 或 CSV 后，第一行会写入标准列名；用户可以在 Excel、WPS、LibreOffice 或文本编辑器中修改内容，再重新导入。CSV 使用 UTF-8 BOM，便于常见中文表格软件正确识别文字编码。
+
+| 列名 | 是否必填 | 示例 | 作用 |
+| --- | --- | --- | --- |
+| `分类路径` | 否 | `工作 / 开发 / 前端` | 使用 `/` 分隔层级；同一路径会自动合并为同一套多级分类 |
+| `名称` | 否 | `Vite` | 书签显示名称；为空时会使用网址域名 |
+| `网址` | 是 | `https://vite.dev/` | 必须以 `http://` 或 `https://` 开头；无效行会被忽略 |
+| `说明` | 否 | `前端构建工具` | 用于站内搜索和数据语义 |
+| `图标来源` | 否 | `favicon_im` | 使用站内支持的图标来源名称 |
+| `自定义图标` | 否 | `https://example.com/logo.png` | 当图标来源为 `custom` 时使用 |
+| `Iconify 图标` | 否 | `logos:vitejs` | 当图标来源为 `iconify` 时使用 |
+
+下方示例会导入为“工作 → 开发 → 前端”和“生活”两组左侧分类；不填写分类路径的书签会作为根级书签导入。
+
+```csv
+分类路径,名称,网址,说明,图标来源,自定义图标,Iconify 图标
+工作 / 开发 / 前端,Vite,https://vite.dev/,前端构建工具,favicon_im,,
+生活,示例站点,https://example.com/,演示网址,,,
+```
+
+导入表格后仍可选择**覆盖导入**或**增量导入**。增量模式会递归合并同名分类、按 URL 去重；表格中的分类路径会先被还原为书签树，再进入同一套合并逻辑。
+
+### 6.3 从 LocalStorage 迁移到云端
 
 以前网页导入的数据仅保存在浏览器的 `archive-index-bookmarks` 键中，不会出现在项目文件夹。现在请打开 **数据工具**，完成登录后点击 **同步当前数据**。系统会把当前书签序列化为 JSON、保存到对象存储，并在 `bookmark_backups` 表中登记元数据。
 
-之后，登录状态下导入 `.json` 文件并确认覆盖或增量导入时，原始 JSON 会自动创建一份云端备份。备份列表显示最近 20 份记录；点击 **恢复** 会先通过用户所属关系校验，再读取备份并覆盖当前浏览器的 LocalStorage 数据。恢复前建议先导出 JSON。
+之后，登录状态下导入 JSON、HTML、XLSX 或 CSV 并确认覆盖或增量导入时，系统会把**解析后的书签树**规范化为 JSON 并创建一份云端备份。备份列表显示最近 20 份记录；点击 **恢复** 会先通过用户所属关系校验，再读取备份并覆盖当前浏览器的 LocalStorage 数据。恢复前建议先导出 JSON 或 XLSX。
 
-### 6.3 导出校验
+### 6.4 导出校验
 
 | 项目 | 当前值 |
 | --- | --- |
 | 账号 | `admin` |
 | 密码 | `123456` |
 
-三种导出都要求上述校验：**JSON** 适合以后重新导入；**浏览器书签 HTML** 可被 Chrome、Edge、Firefox 等浏览器导入；**离线单页导航 HTML** 可本地双击打开，保留目录、搜索、主题、图标与数据工具等核心体验。离线导出文件中的账号校验同样是浏览器端便利校验，而非安全保护。
+五种导出都要求上述校验：**JSON** 适合完整数据备份；**浏览器书签 HTML** 可被 Chrome、Edge、Firefox 等浏览器导入；**XLSX** 适合在电子表格中批量整理；**CSV** 适合文本、数据库与其他系统交换；**离线单页导航 HTML** 可本地双击打开，保留目录、搜索、主题、图标与数据工具等核心体验。离线导出文件中的账号校验同样是浏览器端便利校验，而非安全保护。
 
 ## 7. 响应式设计与使用方式
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createStandaloneNavigation } from "../client/src/lib/standalone.ts";
 
 const bookmarks = [
@@ -28,6 +28,9 @@ for (const marker of [
   "export-page",
   "theme-toggle",
   "import-trigger",
+  "export-xlsx",
+  "export-csv",
+  "分类路径",
   "var sources",
   "function section",
   "scrollIntoView",
@@ -35,7 +38,14 @@ for (const marker of [
   assert.ok(html.includes(marker), `missing ${marker}`);
 }
 
-const script = html.match(/<script>\n([\s\S]*?)\n<\/script><\/body>/)?.[1];
+const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
+  .map(match => match[1])
+  .find(content => content.includes("var seed=JSON.parse"));
 assert.ok(script, "embedded standalone script was not found");
 new Function(script);
+
+const xlsxBundle = readFileSync(new URL("../node_modules/xlsx/dist/xlsx.full.min.js", import.meta.url), "utf8");
+const spreadsheetHtml = createStandaloneNavigation(bookmarks, "favicon_im", xlsxBundle);
+assert.ok(spreadsheetHtml.includes(xlsxBundle.slice(0, 80)), "XLSX engine was not embedded in offline export");
+new Function(xlsxBundle);
 console.log("standalone export smoke passed");

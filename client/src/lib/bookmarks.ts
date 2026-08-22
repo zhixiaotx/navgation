@@ -1,3 +1,9 @@
+type XlsxModule = typeof import("xlsx");
+
+async function loadXlsx(): Promise<XlsxModule> {
+  return import("xlsx");
+}
+
 export type IconSource =
   | "direct"
   | "favicon_im"
@@ -432,4 +438,141 @@ export function toBrowserBookmarkHtml(nodes: BookmarkNode[], title = "书签导�
 
 export function archiveForExport(bookmarks: BookmarkNode[], iconSource: IconSource): BookmarkArchive {
   return { version: 1, title: "书签导航", iconSource, bookmarks };
+}
+
+/**
+ * XLSX / CSV 交换格式使用易读的分类路径列。路径以“ / ”分隔，导入时会按此路径重建文件夹树。
+ */
+export const bookmarkSpreadsheetColumns = {
+  categoryPath: "分类路径",
+  title: "名称",
+  url: "网址",
+  description: "说明",
+  iconSource: "图标来源",
+  customIcon: "自定义图标",
+  iconifyIcon: "Iconify 图标",
+} as const;
+
+export type BookmarkSpreadsheetFormat = "xlsx" | "csv";
+export type BookmarkSpreadsheetRow = Record<(typeof bookmarkSpreadsheetColumns)[keyof typeof bookmarkSpreadsheetColumns], string>;
+
+const spreadsheetHeaders = Object.values(bookmarkSpreadsheetColumns);
+
+function normalizeComparableTitle(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function cellText(value: unknown) {
+  return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+}
+
+function readSpreadsheetCell(row: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = cellText(row[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function spreadsheetPath(value: string) {
+  return value
+    .split(/\s*\/\s*/)
+    .map(segment => segment.trim())
+    .filter(Boolean);
+}
+
+/** 将嵌套书签树扁平为一行一个网址的表格记录。 */
+export function bookmarkNodesToSpreadsheetRows(nodes: BookmarkNode[], ancestry: string[] = []): BookmarkSpreadsheetRow[] {
+  return nodes.flatMap(node => {
+    if (isFolder(node)) return bookmarkNodesToSpreadsheetRows(node.children, [...ancestry, node.title]);
+    return [{
+      [bookmarkSpreadsheetColumns.categoryPath]: ancestry.join(" / "),
+      [bookmarkSpreadsheetColumns.title]: node.title,
+      [bookmarkSpreadsheetColumns.url]: node.url,
+      [bookmarkSpreadsheetColumns.description]: node.description ?? "",
+      [bookmarkSpreadsheetColumns.iconSource]: node.iconSource ?? "",
+      [bookmarkSpreadsheetColumns.customIcon]: node.customIcon ?? "",
+      [bookmarkSpreadsheetColumns.iconifyIcon]: node.iconifyIcon ?? "",
+    }];
+  });
+}
+
+/**
+ * 将表格行按“分类路径”重新组装为多级目录。相同路径的分类会复用同一个文件夹，从而自动生成左侧树。
+ */
+export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknown>>): BookmarkNode[] {
+  const root: BookmarkNode[] = [];
+
+  for (const row of rows) {
+    const url = readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.url, "URL", "url", "链接", "link"]);
+    if (!/^https?:\/\//i.test(url)) continue;
+
+    const title = readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.title, "标题", "title", "name"]) || getHostname(url) || "未命名书签";
+    const path = spreadsheetPath(readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.categoryPath, "分类", "categoryPath", "category"]));
+    let target = root;
+
+    for (const segment of path) {
+      const comparable = normalizeComparableTitle(segment);
+      let folder = target.find(node => isFolder(node) && normalizeComparableTitle(node.title) === comparable);
+      if (!folder || !isFolder(folder)) {
+        folder = { id: makeId("spreadsheet-folder"), type: "folder", title: segment, children: [] };
+        target.push(folder);
+      }
+      target = folder.children;
+    }
+
+    const source = readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.iconSource, "iconSource"]);
+    const item: BookmarkItem = {
+      id: makeId("spreadsheet-bookmark"),
+      type: "bookmark",
+      title,
+      url,
+    };
+    const description = readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.description, "description"]);
+    const customIcon = readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.customIcon, "customIcon"]);
+    const iconifyIcon = readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.iconifyIcon, "iconifyIcon"]);
+    if (description) item.description = description;
+    if (iconSources.some(candidate => candidate.value === source)) item.iconSource = source as IconSource;
+    if (customIcon) item.customIcon = customIcon;
+    if (iconifyIcon) item.iconifyIcon = iconifyIcon;
+    target.push(item);
+  }
+
+  if (!root.length || !countBookmarks(root)) {
+    throw new Error("表格中未找到有效书签。请至少填写“名称”“网址”，网址需以 http:// 或 https:// 开头。");
+  }
+  return root;
+}
+
+export async function parseBookmarkSpreadsheetArrayBuffer(data: ArrayBuffer): Promise<BookmarkNode[]> {
+  const XLSX = await loadXlsx();
+  const workbook = XLSX.read(data, { type: "array", cellDates: false });
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) throw new Error("表格中没有可读取的工作表。");
+  const sheet = workbook.Sheets[firstSheet];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
+  return spreadsheetRowsToBookmarkNodes(rows);
+}
+
+export async function parseBookmarkSpreadsheetFile(file: Pick<File, "arrayBuffer">): Promise<BookmarkNode[]> {
+  return parseBookmarkSpreadsheetArrayBuffer(await file.arrayBuffer());
+}
+
+/** 生成含分类路径、名称、网址和可选图标字段的 XLSX 或带 UTF-8 BOM 的 CSV。 */
+export async function createBookmarkSpreadsheetBlob(bookmarks: BookmarkNode[], format: BookmarkSpreadsheetFormat): Promise<Blob> {
+  const XLSX = await loadXlsx();
+  const rows = bookmarkNodesToSpreadsheetRows(bookmarks);
+  const sheet = XLSX.utils.json_to_sheet(rows, { header: spreadsheetHeaders });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "书签");
+
+  if (format === "csv") {
+    const csv = XLSX.utils.sheet_to_csv(sheet);
+    return new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+  }
+
+  const binary = XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+  return new Blob([binary], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
 }
