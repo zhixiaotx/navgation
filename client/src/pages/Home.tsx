@@ -250,10 +250,7 @@ export default function Home() {
   const totalBookmarks = useMemo(() => countBookmarks(bookmarks), [bookmarks]);
   const allItems = useMemo(() => flattenBookmarks(bookmarks), [bookmarks]);
   const isFiltering = query.trim().length > 0;
-  const activeFolders = useMemo(() => {
-    if (isFiltering || selectedFolder === "all") return topFolders;
-    return topFolders.filter(folder => treeContainsFolder(folder, selectedFolder));
-  }, [isFiltering, selectedFolder, topFolders]);
+  const activeFolders = topFolders;
   const matchedItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return allItems;
@@ -284,8 +281,10 @@ export default function Home() {
 
   function selectFolder(id: string) {
     setSelectedFolder(id);
-    setQuery("");
-    window.setTimeout(() => document.getElementById(`section-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    window.setTimeout(() => {
+      const target = id === "all" ? document.getElementById("bookmark-collection") : document.getElementById(`section-${id}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   function expandAllFolders() {
@@ -495,7 +494,7 @@ export default function Home() {
         <section className="content-toolbar">
           <div>
             <span className="eyebrow">书签目录</span>
-            <p>{isFiltering ? `“${query}” 的匹配结果` : selectedFolder === "all" ? "全部分类" : "当前分类及其子目录"}</p>
+            <p>{isFiltering ? `“${query}” 的匹配结果` : "全部分类"}</p>
           </div>
           <label className="icon-source-select">
             <span>图标来源</span>
@@ -505,7 +504,7 @@ export default function Home() {
           </label>
         </section>
 
-        <div className="bookmark-collection">
+        <div className="bookmark-collection" id="bookmark-collection">
           {activeFolders.map(folder => <FolderSection key={folder.id} folder={folder} iconSource={iconSource} query={query} />)}
           {!activeFolders.length || (isFiltering && !matchedItems.length) ? (
             <section className="empty-archive">
