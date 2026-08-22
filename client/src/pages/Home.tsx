@@ -239,12 +239,13 @@ function FolderTree({
   );
 }
 
-function BookmarkCard({ item, iconSource }: { item: BookmarkItem; iconSource: IconSource }) {
+function BookmarkCard({ item, iconSource, showDescription }: { item: BookmarkItem; iconSource: IconSource; showDescription: boolean }) {
   return (
     <a className="bookmark-card" href={item.url} target="_blank" rel="noreferrer">
       <BookmarkIcon item={item} source={iconSource} />
       <span className="bookmark-body">
         <span className="bookmark-title">{item.title}</span>
+        {showDescription && item.description && <span className="bookmark-description">{item.description}</span>}
       </span>
     </a>
   );
@@ -253,12 +254,14 @@ function BookmarkCard({ item, iconSource }: { item: BookmarkItem; iconSource: Ic
 function FolderSection({
   folder,
   iconSource,
+  showDescription,
   query,
   level = 0,
   ancestry = [],
 }: {
   folder: BookmarkFolder;
   iconSource: IconSource;
+  showDescription: boolean;
   query: string;
   level?: number;
   ancestry?: string[];
@@ -285,12 +288,12 @@ function FolderSection({
       </header>
       {visible.length > 0 && (
         <div className="bookmark-grid">
-          {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} />)}
+          {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} showDescription={showDescription} />)}
         </div>
       )}
       {childFolders.length > 0 && (
         <div className="nested-bookmark-sections">
-          {childFolders.map(child => <FolderSection key={child.id} folder={child} iconSource={iconSource} query={query} level={level + 1} ancestry={folderPath} />)}
+          {childFolders.map(child => <FolderSection key={child.id} folder={child} iconSource={iconSource} showDescription={showDescription} query={query} level={level + 1} ancestry={folderPath} />)}
         </div>
       )}
     </section>
@@ -332,6 +335,7 @@ export default function Home() {
   const [bookmarkManagerQuery, setBookmarkManagerQuery] = useState("");
   const [bookmarkManagerLimit, setBookmarkManagerLimit] = useState(240);
   const [showTop, setShowTop] = useState(false);
+  const [showWebsiteDescriptions, setShowWebsiteDescriptions] = useState(() => localStorage.getItem("archive-index-show-descriptions") === "true");
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [spreadsheetPathSeparator, setSpreadsheetPathSeparator] = useState(defaultSpreadsheetPathSeparator);
   const [pendingExport, setPendingExport] = useState<ExportKind | null>(null);
@@ -451,6 +455,10 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("archive-index-icon-source", iconSource);
   }, [iconSource]);
+
+  useEffect(() => {
+    localStorage.setItem("archive-index-show-descriptions", String(showWebsiteDescriptions));
+  }, [showWebsiteDescriptions]);
 
   useEffect(() => {
     const onScroll = () => setShowTop(window.scrollY > 520);
@@ -981,6 +989,10 @@ export default function Home() {
                           <div className="inline-actions"><button type="button" onClick={() => handleMoveFolder(folderMoveTarget)}><Move size={14} />移动</button><button type="button" onClick={() => applyManagedTree(reorderBookmarkNode(bookmarks, activeFolderId, -1), "已上移分类")}>上移</button><button type="button" onClick={() => applyManagedTree(reorderBookmarkNode(bookmarks, activeFolderId, 1), "已下移分类")}>下移</button></div>
                         </> : <p className="settings-hint">从左侧目录选择一个分类后可进行编辑。</p>}
                       </article>
+                      <article className="settings-card display-preferences-card">
+                        <h4>网址模块显示</h4>
+                        <label className="setting-checkbox"><input type="checkbox" checked={showWebsiteDescriptions} onChange={event => setShowWebsiteDescriptions(event.target.checked)} /><span><strong>显示网站描述</strong><small>启用后，右侧网址卡片会显示书签的“说明”字段；没有说明的卡片保持简洁。</small></span></label>
+                      </article>
                     </div>
                   </section>
                 )}
@@ -1088,7 +1100,7 @@ export default function Home() {
         </section>
 
         <div className="bookmark-collection" id="bookmark-collection">
-          {activeFolders.map(folder => <FolderSection key={folder.id} folder={folder} iconSource={iconSource} query={query} />)}
+          {activeFolders.map(folder => <FolderSection key={folder.id} folder={folder} iconSource={iconSource} showDescription={showWebsiteDescriptions} query={query} />)}
           {!activeFolders.length || (isFiltering && !matchedItems.length) ? (
             <section className="empty-archive">
               <div>
