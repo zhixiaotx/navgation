@@ -152,15 +152,13 @@ function FolderTree({
   );
 }
 
-function BookmarkCard({ item, iconSource, accession }: { item: BookmarkItem; iconSource: IconSource; accession: string }) {
+function BookmarkCard({ item, iconSource }: { item: BookmarkItem; iconSource: IconSource }) {
   return (
-    <a className="bookmark-card" data-accession={accession} href={item.url} target="_blank" rel="noreferrer">
+    <a className="bookmark-card" href={item.url} target="_blank" rel="noreferrer">
       <BookmarkIcon item={item} source={iconSource} />
       <span className="bookmark-body">
         <span className="bookmark-title">{item.title}</span>
-        <span className="bookmark-catalogue"><span>{getHostname(item.url)}</span><b>{accession}</b></span>
       </span>
-      <ExternalLink className="bookmark-external" size={15} strokeWidth={1.75} />
     </a>
   );
 }
@@ -182,7 +180,7 @@ function FolderSection({ folder, iconSource, query }: { folder: BookmarkFolder; 
         <span className="section-count">{visible.length.toString().padStart(2, "0")}</span>
       </header>
       <div className="bookmark-grid">
-        {visible.map((item, index) => <BookmarkCard key={item.id} item={item} iconSource={iconSource} accession={`${folder.title.slice(0, 1).toUpperCase()}-${String(index + 1).padStart(2, "0")}`} />)}
+        {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} />)}
       </div>
     </section>
   );
