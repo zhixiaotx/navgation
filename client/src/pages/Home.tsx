@@ -46,6 +46,8 @@ import {
 import { createStandaloneNavigation } from "@/lib/standalone";
 
 const LOGO_URL = "/manus-storage/archive-index-logo-transparent_3d5f750e.png";
+const DEFAULT_BOOKMARKS_URL = "/manus-storage/default-bookmarks-v20260822_6faf3fe2.json";
+const DEFAULT_DATA_VERSION = "2026-08-22";
 
 const searchEngines = [
   { id: "bing", label: "必应", region: "全球", url: "https://www.bing.com/search?q=" },
@@ -227,6 +229,7 @@ export default function Home() {
       return sampleBookmarks;
     }
   });
+  const [archiveReady, setArchiveReady] = useState(false);
   const [iconSource, setIconSource] = useState<IconSource>(() => {
     const stored = localStorage.getItem("archive-index-icon-source") as IconSource | null;
     return !stored || stored === "google" ? "favicon_im" : stored;
@@ -258,8 +261,60 @@ export default function Home() {
   }, [allItems, query]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const applyArchive = (next: BookmarkNode[]) => {
+      if (cancelled) return;
+      setBookmarks(next);
+      setSelectedFolder(firstFolderId(next));
+      setExpandedFolders(new Set(flattenFolders(next)));
+    };
+
+    async function loadDefaultBookmarks() {
+      let saved: BookmarkNode[] | null = null;
+      let storedVersion: string | null = null;
+
+      try {
+        const raw = localStorage.getItem("archive-index-bookmarks");
+        saved = raw ? normalizeArchive(JSON.parse(raw)) : null;
+        storedVersion = localStorage.getItem("archive-index-default-version");
+      } catch {
+        saved = null;
+      }
+
+      const isLegacySample = Boolean(saved && countBookmarks(saved) === countBookmarks(sampleBookmarks));
+      const shouldApplyDefault = !saved || saved.length === 0 || (!storedVersion && isLegacySample);
+
+      if (!shouldApplyDefault) {
+        if (saved) applyArchive(saved);
+        if (!cancelled) setArchiveReady(true);
+        return;
+      }
+
+      try {
+        const response = await fetch(DEFAULT_BOOKMARKS_URL);
+        if (!response.ok) throw new Error("默认数据加载失败");
+        const payload = await response.json();
+        const defaults = normalizeArchive(payload.bookmarks ?? payload);
+        if (!defaults.length) throw new Error("默认数据为空");
+        applyArchive(defaults);
+        localStorage.setItem("archive-index-bookmarks", JSON.stringify(defaults));
+        localStorage.setItem("archive-index-default-version", DEFAULT_DATA_VERSION);
+      } catch {
+        if (saved) applyArchive(saved);
+      } finally {
+        if (!cancelled) setArchiveReady(true);
+      }
+    }
+
+    loadDefaultBookmarks();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!archiveReady) return;
     localStorage.setItem("archive-index-bookmarks", JSON.stringify(bookmarks));
-  }, [bookmarks]);
+  }, [archiveReady, bookmarks]);
 
   useEffect(() => {
     localStorage.setItem("archive-index-icon-source", iconSource);
