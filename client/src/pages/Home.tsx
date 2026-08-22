@@ -81,6 +81,7 @@ import {
   updateBookmark as updateManagedBookmark,
 } from "@/lib/bookmarkManager";
 import { createStandaloneNavigation } from "@/lib/standalone";
+import { CardDensity, coerceDescriptionLineLimit, DescriptionLineLimit, resolveDescriptionVisibility } from "@/lib/bookmarkDisplayPreferences";
 
 const LOGO_URL = "/manus-storage/archive-index-logo_491f7249.png";
 const DEFAULT_BOOKMARKS_URL = "./data/default-bookmarks.json";
@@ -254,14 +255,16 @@ function BookmarkCard({ item, iconSource, showDescription }: { item: BookmarkIte
 function FolderSection({
   folder,
   iconSource,
-  showDescription,
+  inheritedShowDescription,
+  descriptionOverrides,
   query,
   level = 0,
   ancestry = [],
 }: {
   folder: BookmarkFolder;
   iconSource: IconSource;
-  showDescription: boolean;
+  inheritedShowDescription: boolean;
+  descriptionOverrides: Record<string, boolean>;
   query: string;
   level?: number;
   ancestry?: string[];
@@ -278,6 +281,7 @@ function FolderSection({
     ? subtreeItems.filter(item => `${item.title} ${item.url} ${item.description ?? ""} ${item.path.join(" ")}`.toLowerCase().includes(search)).length
     : subtreeItems.length;
   const childFolders = folder.children.filter(isFolder);
+  const showDescription = resolveDescriptionVisibility(folder.id, inheritedShowDescription, descriptionOverrides);
 
   if (!subtreeCount) return null;
   return (
@@ -293,7 +297,7 @@ function FolderSection({
       )}
       {childFolders.length > 0 && (
         <div className="nested-bookmark-sections">
-          {childFolders.map(child => <FolderSection key={child.id} folder={child} iconSource={iconSource} showDescription={showDescription} query={query} level={level + 1} ancestry={folderPath} />)}
+          {childFolders.map(child => <FolderSection key={child.id} folder={child} iconSource={iconSource} inheritedShowDescription={showDescription} descriptionOverrides={descriptionOverrides} query={query} level={level + 1} ancestry={folderPath} />)}
         </div>
       )}
     </section>
@@ -336,6 +340,18 @@ export default function Home() {
   const [bookmarkManagerLimit, setBookmarkManagerLimit] = useState(240);
   const [showTop, setShowTop] = useState(false);
   const [showWebsiteDescriptions, setShowWebsiteDescriptions] = useState(() => localStorage.getItem("archive-index-show-descriptions") === "true");
+  const [descriptionLineLimit, setDescriptionLineLimit] = useState<DescriptionLineLimit>(() => coerceDescriptionLineLimit(localStorage.getItem("archive-index-description-lines")));
+  const [cardDensity, setCardDensity] = useState<CardDensity>(() => localStorage.getItem("archive-index-card-density") === "compact" ? "compact" : "spacious");
+  const [folderDescriptionOverrides, setFolderDescriptionOverrides] = useState<Record<string, boolean>>(() => {
+    try {
+      const parsed: unknown = JSON.parse(localStorage.getItem("archive-index-folder-description-overrides") ?? "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).filter(([, value]) => typeof value === "boolean")) as Record<string, boolean>;
+    } catch {
+      return {};
+    }
+  });
+  const [descriptionOverrideFolderId, setDescriptionOverrideFolderId] = useState("");
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [spreadsheetPathSeparator, setSpreadsheetPathSeparator] = useState(defaultSpreadsheetPathSeparator);
   const [pendingExport, setPendingExport] = useState<ExportKind | null>(null);
@@ -381,6 +397,8 @@ export default function Home() {
   const isFiltering = query.trim().length > 0;
   const activeFolders = topFolders;
   const folderOptions = useMemo(() => listFolderOptions(bookmarks), [bookmarks]);
+  const selectedDescriptionOverrideFolder = folderOptions.find(folder => folder.id === descriptionOverrideFolderId);
+  const selectedDescriptionOverrideValue = descriptionOverrideFolderId ? folderDescriptionOverrides[descriptionOverrideFolderId] : undefined;
   const manageableBookmarks = useMemo(() => flattenBookmarks(bookmarks), [bookmarks]);
   const filteredManageableBookmarks = useMemo(() => {
     const normalized = bookmarkManagerQuery.trim().toLowerCase();
@@ -459,6 +477,18 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("archive-index-show-descriptions", String(showWebsiteDescriptions));
   }, [showWebsiteDescriptions]);
+
+  useEffect(() => {
+    localStorage.setItem("archive-index-description-lines", String(descriptionLineLimit));
+  }, [descriptionLineLimit]);
+
+  useEffect(() => {
+    localStorage.setItem("archive-index-card-density", cardDensity);
+  }, [cardDensity]);
+
+  useEffect(() => {
+    localStorage.setItem("archive-index-folder-description-overrides", JSON.stringify(folderDescriptionOverrides));
+  }, [folderDescriptionOverrides]);
 
   useEffect(() => {
     const onScroll = () => setShowTop(window.scrollY > 520);
@@ -992,6 +1022,9 @@ export default function Home() {
                       <article className="settings-card display-preferences-card">
                         <h4>网址模块显示</h4>
                         <label className="setting-checkbox"><input type="checkbox" checked={showWebsiteDescriptions} onChange={event => setShowWebsiteDescriptions(event.target.checked)} /><span><strong>显示网站描述</strong><small>启用后，右侧网址卡片会显示书签的“说明”字段；没有说明的卡片保持简洁。</small></span></label>
+                        <label>描述最大行数<select value={descriptionLineLimit} disabled={!showWebsiteDescriptions} onChange={event => setDescriptionLineLimit(coerceDescriptionLineLimit(event.target.value))}>{([1, 2, 3, 4] as const).map(limit => <option key={limit} value={limit}>最多 {limit} 行</option>)}</select></label>
+                        <div className="density-toggle"><span>卡片显示密度</span><div role="group" aria-label="卡片显示密度"><button type="button" className={cardDensity === "compact" ? "is-active" : ""} onClick={() => setCardDensity("compact")}>紧凑</button><button type="button" className={cardDensity === "spacious" ? "is-active" : ""} onClick={() => setCardDensity("spacious")}>舒展</button></div><small>紧凑模式展示更多入口；舒展模式为标题与描述保留更多留白。</small></div>
+                        <div className="folder-description-override"><label>按分类设置<select value={descriptionOverrideFolderId} onChange={event => setDescriptionOverrideFolderId(event.target.value)}><option value="">选择分类后覆盖全局设置</option>{folderOptions.map(folder => <option key={folder.id} value={folder.id}>{"　".repeat(folder.depth)}{folder.path}</option>)}</select></label>{selectedDescriptionOverrideFolder && <><label className="setting-checkbox"><input type="checkbox" checked={selectedDescriptionOverrideValue ?? showWebsiteDescriptions} onChange={event => setFolderDescriptionOverrides(previous => ({ ...previous, [selectedDescriptionOverrideFolder.id]: event.target.checked }))} /><span><strong>此分类及子分类显示描述</strong><small>{selectedDescriptionOverrideValue === undefined ? "当前跟随全局设置；勾选或取消即创建分类级覆盖。" : "当前已使用分类级覆盖，可恢复为全局设置。"}</small></span></label>{selectedDescriptionOverrideValue !== undefined && <button type="button" className="preference-reset" onClick={() => setFolderDescriptionOverrides(previous => { const next = { ...previous }; delete next[selectedDescriptionOverrideFolder.id]; return next; })}>恢复跟随全局</button>}</>}</div>
                       </article>
                     </div>
                   </section>
@@ -1099,8 +1132,8 @@ export default function Home() {
           </label>
         </section>
 
-        <div className="bookmark-collection" id="bookmark-collection">
-          {activeFolders.map(folder => <FolderSection key={folder.id} folder={folder} iconSource={iconSource} showDescription={showWebsiteDescriptions} query={query} />)}
+        <div className={`bookmark-collection card-density-${cardDensity} description-lines-${descriptionLineLimit}`} id="bookmark-collection">
+          {activeFolders.map(folder => <FolderSection key={folder.id} folder={folder} iconSource={iconSource} inheritedShowDescription={showWebsiteDescriptions} descriptionOverrides={folderDescriptionOverrides} query={query} />)}
           {!activeFolders.length || (isFiltering && !matchedItems.length) ? (
             <section className="empty-archive">
               <div>

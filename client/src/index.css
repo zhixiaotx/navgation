@@ -254,6 +254,18 @@
 .bookmark-body { min-width: 0; flex: 1; }
 .bookmark-title { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .bookmark-description { display: -webkit-box; overflow: hidden; margin-top: 4px; color: var(--ink-soft); font-size: 10px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.bookmark-collection.description-lines-1 .bookmark-description { -webkit-line-clamp: 1; }
+.bookmark-collection.description-lines-2 .bookmark-description { -webkit-line-clamp: 2; }
+.bookmark-collection.description-lines-3 .bookmark-description { -webkit-line-clamp: 3; }
+.bookmark-collection.description-lines-4 .bookmark-description { -webkit-line-clamp: 4; }
+.bookmark-collection.card-density-compact .bookmark-grid { gap: 7px; }
+.bookmark-collection.card-density-compact .bookmark-card { min-height: 54px; padding: 9px 10px; gap: 9px; border-radius: 7px; }
+.bookmark-collection.card-density-compact .bookmark-icon { width: 28px; height: 28px; }
+.bookmark-collection.card-density-compact .bookmark-icon img { width: 21px; height: 21px; }
+.bookmark-collection.card-density-compact .bookmark-title { font-size: 12px; }
+.bookmark-collection.card-density-compact .bookmark-description { margin-top: 2px; font-size: 9px; }
+.bookmark-collection.card-density-spacious .bookmark-grid { gap: 12px; }
+.bookmark-collection.card-density-spacious .bookmark-card { min-height: 80px; padding: 15px 16px; gap: 14px; }
 
 .empty-archive { display: flex; align-items: center; justify-content: space-between; gap: 25px; margin-top: 29px; padding: 35px; border: 1px dashed color-mix(in srgb, var(--archive-blue) 40%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--archive-blue) 4%, transparent); }
 .empty-archive h2 { margin: 7px 0 5px; font-family: "DM Serif Display", "Noto Serif SC", serif; font-size: 28px; font-weight: 400; }
@@ -369,6 +381,14 @@
 .settings-card .setting-checkbox span { display: grid; gap: 4px; }
 .settings-card .setting-checkbox strong { color: var(--ink); font-size: 12px; }
 .settings-card .setting-checkbox small { color: var(--ink-soft); font-size: 10px; font-weight: 400; line-height: 1.55; }
+.density-toggle, .folder-description-override { display: grid; gap: 7px; margin-top: 12px; color: var(--ink-soft); font-size: 10px; font-weight: 700; }
+.density-toggle > div { display: flex; gap: 6px; }
+.density-toggle button, .preference-reset { min-height: 31px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--paper) 85%, transparent); color: var(--ink-soft); font-size: 10px; font-weight: 700; }
+.density-toggle button.is-active { border-color: var(--archive-blue); background: var(--archive-blue-pale); color: var(--archive-blue-deep); }
+.density-toggle small { color: var(--ink-soft); font-size: 9px; font-weight: 400; line-height: 1.5; }
+.folder-description-override { padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--line) 85%, transparent); }
+.preference-reset { justify-self: start; }
+.preference-reset:hover { border-color: var(--archive-blue); color: var(--archive-blue-deep); }
 .settings-card input, .settings-card textarea, .settings-card select, .batch-bar select { width: 100%; min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; outline: none; background: color-mix(in srgb, var(--paper) 85%, transparent); color: var(--ink); font: inherit; font-size: 11px; }
 .settings-card textarea { min-height: 68px; padding-block: 8px; resize: vertical; }
 .settings-card input:focus, .settings-card textarea:focus, .settings-card select:focus, .batch-bar select:focus { border-color: var(--archive-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--archive-blue) 12%, transparent); }
