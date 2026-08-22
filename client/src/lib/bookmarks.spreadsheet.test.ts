@@ -6,6 +6,7 @@ import {
   createBlankBookmarkSpreadsheetBlob,
   createBookmarkImportPreview,
   createBookmarkSpreadsheetBlob,
+  createMultiLevelBookmarkSpreadsheetExampleBlob,
   isFolder,
   parseBookmarkJson,
   parseBookmarkSpreadsheetArrayBuffer,
@@ -106,5 +107,14 @@ describe("bookmark spreadsheet interchange", () => {
     expect(content).toContain(bookmarkSpreadsheetColumns.categoryPath);
     expect(content).toContain(bookmarkSpreadsheetColumns.title);
     expect(content).toContain(bookmarkSpreadsheetColumns.url);
+  });
+
+  it("creates a multi-level category example that can be re-imported", async () => {
+    const blob = await createMultiLevelBookmarkSpreadsheetExampleBlob("csv");
+    const result = await parseBookmarkSpreadsheetArrayBuffer(await blob.arrayBuffer());
+    const paths = bookmarkNodesToSpreadsheetRows(result).map(row => row[bookmarkSpreadsheetColumns.categoryPath]);
+
+    expect(paths).toContain("效率工作台 / 写作与协作");
+    expect(countBookmarks(result)).toBeGreaterThan(3);
   });
 });

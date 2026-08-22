@@ -729,3 +729,8 @@ async function createBookmarkSpreadsheetBlobFromRows(rows: BookmarkSpreadsheetRo
 export async function createBlankBookmarkSpreadsheetBlob(format: BookmarkSpreadsheetFormat): Promise<Blob> {
   return createBookmarkSpreadsheetBlobFromRows([], format, "书签导入模板");
 }
+
+/** 生成含三层分类路径的 XLSX / CSV 样例，便于理解表格导入的分类还原规则。 */
+export async function createMultiLevelBookmarkSpreadsheetExampleBlob(format: BookmarkSpreadsheetFormat): Promise<Blob> {
+  return createBookmarkSpreadsheetBlobFromRows(bookmarkNodesToSpreadsheetRows(sampleBookmarks), format, "多级分类示例");
+}

@@ -51,6 +51,7 @@ import {
   createBlankBookmarkSpreadsheetBlob,
   createBookmarkImportPreview,
   createBookmarkSpreadsheetBlob,
+  createMultiLevelBookmarkSpreadsheetExampleBlob,
   fallbackIconSources,
   flattenBookmarks,
   getFaviconUrl,
@@ -730,6 +731,16 @@ export default function Home() {
     }
   }
 
+  async function downloadMultiLevelSpreadsheetExample(format: "xlsx" | "csv") {
+    try {
+      const blob = await createMultiLevelBookmarkSpreadsheetExampleBlob(format);
+      downloadBlob(`bookmark-multilevel-category-example.${format}`, blob);
+      toast.success(`已下载 ${format.toUpperCase()} 多级分类示例`, { description: "请查看“分类路径”列中的“效率工作台 / 写作与协作”等层级写法。" });
+    } catch (error) {
+      toast.error("示例下载未完成", { description: error instanceof Error ? error.message : "无法生成多级分类示例。" });
+    }
+  }
+
   async function exportStandalone() {
     try {
       const { default: xlsxBundle } = await import("xlsx/dist/xlsx.full.min.js?raw");
@@ -844,7 +855,7 @@ export default function Home() {
                 <div className="data-tools-section-head"><span className="eyebrow">IMPORT</span><h3>导入书签数据</h3></div>
                 <button className="data-tool-primary" type="button" onClick={() => { setShowDataTools(false); importRef.current?.click(); }}><FileUp size={17} />选择 JSON / HTML / XLSX / CSV 文件</button>
                 <p>支持浏览器书签 HTML、本站归档 JSON、极光 Tab 原始 JSON、WebDesk 原始 JSON 和表格文件。解析后会先显示数据摘要与样本，确认后才会写入页面。</p>
-                <div className="template-downloads"><span>首次录入可下载空白模板：</span><button type="button" onClick={() => void downloadSpreadsheetTemplate("xlsx")}><FileSpreadsheet size={14} />XLSX 模板</button><button type="button" onClick={() => void downloadSpreadsheetTemplate("csv")}><FileSpreadsheet size={14} />CSV 模板</button></div>
+                <div className="template-downloads"><span>多级分类示例：</span><button type="button" onClick={() => void downloadMultiLevelSpreadsheetExample("xlsx")} title="下载多级分类 XLSX 示例"><FileSpreadsheet size={14} />XLSX 示例</button><button type="button" onClick={() => void downloadMultiLevelSpreadsheetExample("csv")} title="下载多级分类 CSV 示例"><FileSpreadsheet size={14} />CSV 示例</button><span>首次录入可下载空白模板：</span><button type="button" onClick={() => void downloadSpreadsheetTemplate("xlsx")}><FileSpreadsheet size={14} />XLSX 模板</button><button type="button" onClick={() => void downloadSpreadsheetTemplate("csv")}><FileSpreadsheet size={14} />CSV 模板</button></div>
               </section>
               <section className="data-tools-section">
                 <div className="data-tools-section-head"><span className="eyebrow">EXPORT</span><h3>导出当前书签</h3></div>
