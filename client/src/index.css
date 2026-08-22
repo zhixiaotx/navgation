@@ -100,7 +100,9 @@
   background-color: var(--paper);
   background-image: radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--archive-blue) 4%, transparent) 0 1px, transparent 1px), radial-gradient(circle at 75% 80%, color-mix(in srgb, var(--ink) 3%, transparent) 0 1px, transparent 1px);
   background-size: 11px 11px, 13px 13px;
+  transition: grid-template-columns .24s var(--ease-out);
 }
+.archive-shell.is-sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
 
 .archive-sidebar {
   position: sticky;
@@ -112,7 +114,8 @@
   flex-direction: column;
   background: color-mix(in srgb, var(--paper) 91%, transparent);
   backdrop-filter: blur(12px);
-  overflow-y: auto;
+  overflow: hidden;
+  transition: padding .24s var(--ease-out);
 }
 
 .brand-lockup { position: relative; display: flex; align-items: center; gap: 11px; padding: 0 8px 31px; }
@@ -120,9 +123,16 @@
 .brand-logo { width: 41px; height: 41px; object-fit: contain; flex: 0 0 auto; }
 .brand-lockup strong { display: block; font-family: "DM Serif Display", "Noto Serif SC", serif; font-size: 20px; letter-spacing: .02em; line-height: 1; }
 .brand-lockup span { display: block; margin-top: 6px; color: var(--ink-soft); font-size: 9px; font-weight: 700; letter-spacing: .17em; }
+.sidebar-toggle { display: grid; place-items: center; width: 31px; height: 31px; margin-left: auto; border: 1px solid var(--line); border-radius: 7px; background: color-mix(in srgb, var(--paper) 90%, transparent); color: var(--ink-soft); transition: color .16s var(--ease-out), border-color .16s var(--ease-out), background .16s var(--ease-out), transform .16s var(--ease-out); }
+.sidebar-toggle:hover { border-color: var(--archive-blue); background: var(--archive-blue-pale); color: var(--archive-blue-deep); }
+.archive-shell.is-sidebar-collapsed .archive-sidebar { padding-inline: 14px; }
+.archive-shell.is-sidebar-collapsed .brand-lockup { justify-content: center; padding-inline: 0; }
+.archive-shell.is-sidebar-collapsed .brand-lockup > div, .archive-shell.is-sidebar-collapsed .brand-lockup::after, .archive-shell.is-sidebar-collapsed .archive-nav, .archive-shell.is-sidebar-collapsed .sidebar-footnote { display: none; }
+.archive-shell.is-sidebar-collapsed .brand-logo { width: 39px; height: 39px; }
+.archive-shell.is-sidebar-collapsed .sidebar-toggle { position: absolute; top: 48px; margin: 0; }
 
 .eyebrow { margin: 0; color: var(--archive-blue); font-size: 10px; font-weight: 700; letter-spacing: .14em; line-height: 1.3; text-transform: uppercase; }
-.archive-nav { min-height: 0; }
+.archive-nav { min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; }
 .archive-nav > .eyebrow { padding: 0 11px 9px; }
 .all-bookmarks, .tree-select, .tree-expand { border: 0; background: transparent; color: inherit; }
 .all-bookmarks { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 11px; border-radius: 9px; color: var(--ink); font-size: 13px; font-weight: 600; text-align: left; transition: background .16s var(--ease-out), color .16s var(--ease-out), transform .16s var(--ease-out); }
@@ -130,6 +140,9 @@
 .all-bookmarks:hover, .all-bookmarks.is-selected { background: var(--archive-blue-pale); color: var(--archive-blue-deep); }
 .all-bookmarks:active, .tree-row button:active, .topbar button:active, .data-console button:active, .search-tools button:active, .back-to-top:active { transform: scale(.97); }
 .tree-list { margin: 5px 0 0; padding: 0; list-style: none; }
+.tree-scroll { min-height: 0; flex: 1 1 auto; padding: 0 2px 12px 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--archive-blue) 35%, transparent) transparent; }
+.tree-scroll::-webkit-scrollbar { width: 5px; }
+.tree-scroll::-webkit-scrollbar-thumb { border-radius: 99px; background: color-mix(in srgb, var(--archive-blue) 38%, transparent); }
 .tree-actions { display: flex; gap: 9px; padding: 5px 11px 4px; }
 .tree-actions button { border: 0; padding: 0; background: transparent; color: var(--ink-soft); font-size: 10px; line-height: 1.3; text-decoration: underline; text-underline-offset: 3px; }
 .tree-actions button:hover { color: var(--archive-blue); }
@@ -143,7 +156,7 @@
 .tree-select small { margin-left: auto; min-width: 18px; color: var(--ink-soft); font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
 .tree-row.is-selected .tree-select small { color: var(--archive-blue); font-weight: 700; }
 .tree-row.is-selected .tree-select, .tree-row.is-selected .tree-expand { color: var(--archive-blue-deep); }
-.sidebar-footnote { margin-top: auto; padding: 28px 10px 0; color: var(--ink-soft); font-size: 10px; line-height: 1.65; }
+.sidebar-footnote { flex: 0 0 auto; margin-top: 16px; padding: 16px 10px 0; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 10px; line-height: 1.65; }
 .sidebar-footnote p { margin: 3px 0; }
 .sidebar-footnote strong { color: var(--ink); font-size: 11px; }
 .archive-rule { display: block; width: 32px; height: 3px; margin-bottom: 12px; background: var(--archive-blue); }
@@ -277,6 +290,7 @@
   .archive-sidebar { position: relative; width: auto; height: auto; min-height: 0; padding: 16px 18px; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .brand-lockup { padding: 0; }
   .brand-lockup::after { display: none; }
+  .sidebar-toggle { display: none; }
   .archive-nav, .sidebar-footnote { display: none; }
   .archive-main { padding: 0 18px; }
   .topbar { min-height: 65px; }

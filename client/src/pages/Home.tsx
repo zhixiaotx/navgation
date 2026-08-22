@@ -18,6 +18,8 @@ import {
   FolderClosed,
   FolderOpen,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Sun,
 } from "lucide-react";
@@ -208,6 +210,7 @@ export default function Home() {
   const [showTop, setShowTop] = useState(false);
   const [pendingImport, setPendingImport] = useState<BookmarkNode[] | null>(null);
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
 
   const topFolders = useMemo(() => {
@@ -317,7 +320,7 @@ export default function Home() {
   }
 
   return (
-    <div className="archive-shell">
+    <div className={`archive-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}>
       <aside className="archive-sidebar">
         <div className="brand-lockup">
           <img src={LOGO_URL} alt="书签导航标记" className="brand-logo" />
@@ -325,6 +328,9 @@ export default function Home() {
             <strong>书签导航</strong>
             <span>ARCHIVE INDEX</span>
           </div>
+          <button className="sidebar-toggle" type="button" onClick={() => setSidebarCollapsed(collapsed => !collapsed)} aria-label={sidebarCollapsed ? "展开左侧分类面板" : "折叠左侧分类面板"}>
+            {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+          </button>
         </div>
 
         <nav className="archive-nav" aria-label="书签分类">
@@ -338,9 +344,11 @@ export default function Home() {
             <button type="button" onClick={expandAllFolders}>全部展开</button>
             <button type="button" onClick={collapseAllFolders}>全部收起</button>
           </div>
-          <ul className="tree-list">
-            {topFolders.map(folder => <FolderTree key={folder.id} folder={folder} selectedId={selectedFolder} expanded={expandedFolders} onSelect={selectFolder} onToggle={toggleFolder} />)}
-          </ul>
+          <div className="tree-scroll">
+            <ul className="tree-list">
+              {topFolders.map(folder => <FolderTree key={folder.id} folder={folder} selectedId={selectedFolder} expanded={expandedFolders} onSelect={selectFolder} onToggle={toggleFolder} />)}
+            </ul>
+          </div>
         </nav>
 
         <div className="sidebar-footnote">
