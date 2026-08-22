@@ -159,17 +159,12 @@ function FolderTree({
   );
 }
 
-function BookmarkCard({ item, iconSource, sectionTitle }: { item: BookmarkItem & { path: string[] }; iconSource: IconSource; sectionTitle: string }) {
-  const category = item.path[item.path.length - 1] || sectionTitle;
+function BookmarkCard({ item, iconSource }: { item: BookmarkItem; iconSource: IconSource }) {
   return (
     <a className="bookmark-card" href={item.url} target="_blank" rel="noreferrer">
       <BookmarkIcon item={item} source={iconSource} />
       <span className="bookmark-body">
         <span className="bookmark-title">{item.title}</span>
-        <span className="bookmark-meta">
-          <span className="bookmark-category">{category}</span>
-          <span className="bookmark-url">{getHostname(item.url)}</span>
-        </span>
       </span>
     </a>
   );
@@ -214,7 +209,7 @@ function FolderSection({
       </header>
       {visible.length > 0 && (
         <div className="bookmark-grid">
-          {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} sectionTitle={folder.title} />)}
+          {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} />)}
         </div>
       )}
       {childFolders.length > 0 && (
