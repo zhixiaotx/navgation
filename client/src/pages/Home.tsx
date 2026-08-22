@@ -87,8 +87,6 @@ import { CardDensity, coerceDescriptionLineLimit, DescriptionLineLimit, resolveD
 const LOGO_URL = "/manus-storage/archive-index-logo_491f7249.png";
 const DEFAULT_BOOKMARKS_URL = "./data/default-bookmarks.json";
 const DEFAULT_DATA_VERSION = "2026-08-22";
-const EXPORT_USERNAME = "admin";
-const EXPORT_PASSWORD = "123456";
 
 type ExportKind = "json" | "html" | "xlsx" | "csv" | "standalone";
 type PendingImport = {
@@ -258,6 +256,7 @@ function FolderSection({
   iconSource,
   inheritedShowDescription,
   descriptionOverrides,
+  transitionTargetId,
   query,
   level = 0,
   ancestry = [],
@@ -266,6 +265,7 @@ function FolderSection({
   iconSource: IconSource;
   inheritedShowDescription: boolean;
   descriptionOverrides: Record<string, boolean>;
+  transitionTargetId: string | null;
   query: string;
   level?: number;
   ancestry?: string[];
@@ -286,7 +286,7 @@ function FolderSection({
 
   if (!subtreeCount) return null;
   return (
-    <section className={`bookmark-section ${level > 0 ? "is-nested" : ""}`} id={`section-${folder.id}`}>
+    <section className={`bookmark-section ${level > 0 ? "is-nested" : ""} ${transitionTargetId === folder.id ? "is-category-transitioning" : ""}`} id={`section-${folder.id}`}>
       <header className="section-heading">
         <span className="section-tab" />
         <h2>{folder.title}</h2>
@@ -298,7 +298,7 @@ function FolderSection({
       )}
       {childFolders.length > 0 && (
         <div className="nested-bookmark-sections">
-          {childFolders.map(child => <FolderSection key={child.id} folder={child} iconSource={iconSource} inheritedShowDescription={showDescription} descriptionOverrides={descriptionOverrides} query={query} level={level + 1} ancestry={folderPath} />)}
+          {childFolders.map(child => <FolderSection key={child.id} folder={child} iconSource={iconSource} inheritedShowDescription={showDescription} descriptionOverrides={descriptionOverrides} transitionTargetId={transitionTargetId} query={query} level={level + 1} ancestry={folderPath} />)}
         </div>
       )}
     </section>
@@ -355,14 +355,18 @@ export default function Home() {
   const [descriptionOverrideFolderId, setDescriptionOverrideFolderId] = useState("");
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [spreadsheetPathSeparator, setSpreadsheetPathSeparator] = useState(defaultSpreadsheetPathSeparator);
-  const [pendingExport, setPendingExport] = useState<ExportKind | null>(null);
-  const [exportUsername, setExportUsername] = useState("");
-  const [exportPassword, setExportPassword] = useState("");
+  const [categoryTransitionTarget, setCategoryTransitionTarget] = useState<string | null>(null);
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const dataToolsTriggerRef = useRef<HTMLButtonElement>(null);
+  const categoryTransitionTimer = useRef<number | null>(null);
+  const exportAuthorization = trpc.exportAccess.authorize.useQuery(undefined, {
+    enabled: false,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
   const cloudBackups = trpc.bookmarkBackups.list.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
@@ -497,6 +501,10 @@ export default function Home() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => () => {
+    if (categoryTransitionTimer.current) window.clearTimeout(categoryTransitionTimer.current);
+  }, []);
+
   function toggleFolder(id: string) {
     setExpandedFolders(previous => {
       const next = new Set(previous);
@@ -507,6 +515,12 @@ export default function Home() {
 
   function selectFolder(id: string) {
     setSelectedFolder(id);
+    setCategoryTransitionTarget(id);
+    if (categoryTransitionTimer.current) window.clearTimeout(categoryTransitionTimer.current);
+    categoryTransitionTimer.current = window.setTimeout(() => {
+      setCategoryTransitionTarget(current => current === id ? null : current);
+      categoryTransitionTimer.current = null;
+    }, 260);
     window.setTimeout(() => {
       const target = id === "all" ? document.getElementById("bookmark-collection") : document.getElementById(`section-${id}`);
       target?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -813,27 +827,30 @@ export default function Home() {
     }
   }
 
-  function requestExport(kind: ExportKind) {
-    setExportUsername("");
-    setExportPassword("");
-    setPendingExport(kind);
+  async function performExport(kind: ExportKind) {
+    if (kind === "json") exportJson();
+    if (kind === "html") exportHtml();
+    if (kind === "xlsx") await exportSpreadsheet("xlsx");
+    if (kind === "csv") await exportSpreadsheet("csv");
+    if (kind === "standalone") await exportStandalone();
   }
 
-  function verifyAndExport(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (exportUsername !== EXPORT_USERNAME || exportPassword !== EXPORT_PASSWORD) {
-      toast.error("账号或密码不正确", { description: "请使用管理员账号后再次导出。" });
+  async function requestExport(kind: ExportKind) {
+    if (authLoading) {
+      toast.info("正在确认登录状态", { description: "请稍候后再次尝试导出。" });
       return;
     }
-
-    const selectedExport = pendingExport;
-    setPendingExport(null);
-    setExportPassword("");
-    if (selectedExport === "json") exportJson();
-    if (selectedExport === "html") exportHtml();
-    if (selectedExport === "xlsx") void exportSpreadsheet("xlsx");
-    if (selectedExport === "csv") void exportSpreadsheet("csv");
-    if (selectedExport === "standalone") void exportStandalone();
+    if (!isAuthenticated) {
+      toast.info("登录后即可导出", { description: "导出需使用受管理的登录会话授权，不再使用固定前端密码。" });
+      startLogin();
+      return;
+    }
+    const authorization = await exportAuthorization.refetch();
+    if (authorization.error || !authorization.data?.authorized) {
+      toast.error("导出授权未通过", { description: authorization.error?.message ?? "请重新登录后再试。" });
+      return;
+    }
+    await performExport(kind);
   }
 
   return (
@@ -934,6 +951,7 @@ export default function Home() {
                   <button type="button" onClick={() => { setShowDataTools(false); requestExport("csv"); }}><FileSpreadsheet size={16} /><span>CSV</span><small>通用交换</small></button>
                   <button type="button" onClick={() => { setShowDataTools(false); requestExport("standalone"); }}><Download size={16} /><span>离线导航</span><small>独立 HTML 页面</small></button>
                 </div>
+                <p className="export-session-notice">{authLoading ? "正在确认登录状态…" : isAuthenticated ? "当前登录会话已就绪；每次导出都会向服务端再次确认授权。" : "导出需要登录授权；离线单页导航不具备服务器会话验证能力。"}</p>
               </section>
               <button className="data-tools-settings-link" type="button" onClick={() => { setShowDataTools(false); setShowTools(true); setSettingsTab("backup"); }}><Settings size={15} />更多备份、云端恢复与数据维护，请前往设置</button>
             </div>
@@ -1067,7 +1085,7 @@ export default function Home() {
 
                 {settingsTab === "backup" && (
                   <section className="settings-panel" aria-label="备份与恢复">
-                    <div className="settings-panel-copy"><span>BACKUP / RESTORE</span><h3>一键备份与恢复</h3><p>本地备份会下载 JSON 文件；受管理云端备份仅对登录用户私有可见。导出操作仍需管理员验证。</p></div>
+              <div className="settings-panel-copy"><span>BACKUP / RESTORE</span><h3>一键备份与恢复</h3><p>本地备份会下载 JSON 文件；受管理云端备份仅对登录用户私有可见。导出操作通过当前登录会话授权。</p></div>
                     <div className="settings-grid backup-grid">
                       <article className="settings-card"><h4>本地备份与导入</h4><div className="stack-actions"><button className="settings-primary" type="button" onClick={() => requestExport("json")}><FileJson2 size={15} />下载本地 JSON 备份</button><button type="button" onClick={() => importRef.current?.click()}><FileUp size={15} />从本地文件恢复</button><button type="button" onClick={() => requestExport("xlsx")}><FileSpreadsheet size={15} />导出 XLSX</button><button type="button" onClick={() => requestExport("csv")}><FileSpreadsheet size={15} />导出 CSV</button><button type="button" onClick={() => void downloadSpreadsheetTemplate("xlsx")}><Download size={15} />下载 XLSX 空白模板</button><button type="button" onClick={() => void downloadSpreadsheetTemplate("csv")}><Download size={15} />下载 CSV 空白模板</button></div></article>
                       <article className="settings-card"><h4>受管理云端备份</h4>{isAuthenticated ? <><div className="inline-actions"><button className="settings-primary" type="button" onClick={syncCurrentBookmarks} disabled={saveCloudBackup.isPending || !archiveReady}><Cloud size={15} />{saveCloudBackup.isPending ? "正在备份…" : "一键云端备份"}</button>{cloudBackups.data?.[0] && <button type="button" onClick={() => restoreCloudBackup(cloudBackups.data![0].id)} disabled={accessCloudBackup.isPending}><RotateCcw size={15} />恢复最新备份</button>}</div><div className="cloud-backup-list" aria-live="polite">{cloudBackups.isLoading ? <p>正在读取云端备份…</p> : cloudBackups.data?.length ? <ul>{cloudBackups.data.map(backup => <li key={backup.id}><div><strong>{backup.fileName}</strong><span>{backup.bookmarkCount} 个入口 · {new Date(backup.createdAt).toLocaleString("zh-CN")}</span></div><button type="button" onClick={() => restoreCloudBackup(backup.id)} disabled={accessCloudBackup.isPending}><RotateCcw size={14} />恢复</button></li>)}</ul> : <p>暂无云端备份。</p>}</div></> : <button className="settings-primary" type="button" onClick={startLogin} disabled={authLoading}><LogIn size={15} />登录以启用云端备份</button>}</article>
@@ -1136,8 +1154,8 @@ export default function Home() {
           </label>
         </section>
 
-        <div className={`bookmark-collection card-density-${cardDensity} description-lines-${descriptionLineLimit}`} id="bookmark-collection">
-          {activeFolders.map(folder => <FolderSection key={folder.id} folder={folder} iconSource={iconSource} inheritedShowDescription={showWebsiteDescriptions} descriptionOverrides={folderDescriptionOverrides} query={query} />)}
+        <div className={`bookmark-collection card-density-${cardDensity} description-lines-${descriptionLineLimit} ${categoryTransitionTarget === "all" ? "is-category-transitioning" : ""}`} id="bookmark-collection">
+          {activeFolders.map(folder => <FolderSection key={folder.id} folder={folder} iconSource={iconSource} inheritedShowDescription={showWebsiteDescriptions} descriptionOverrides={folderDescriptionOverrides} transitionTargetId={categoryTransitionTarget} query={query} />)}
           {!activeFolders.length || (isFiltering && !matchedItems.length) ? (
             <section className="empty-archive">
               <div>
@@ -1171,23 +1189,6 @@ export default function Home() {
             </div>
             <button className="import-cancel" type="button" onClick={() => setPendingImport(null)}>取消本次导入</button>
           </section>
-        </div>
-      )}
-      {pendingExport && (
-        <div className="import-overlay" role="dialog" aria-modal="true" aria-labelledby="export-auth-title">
-          <form className="import-choice export-auth" onSubmit={verifyAndExport}>
-            <span className="eyebrow">EXPORT AUTHORIZATION</span>
-            <h2 id="export-auth-title">验证后导出{pendingExport === "json" ? " JSON 数据" : pendingExport === "html" ? "书签 HTML" : pendingExport === "xlsx" ? " XLSX 数据" : pendingExport === "csv" ? " CSV 数据" : "单页导航"}</h2>
-            <p>导出操作需要管理员验证。此验证仅在当前浏览器中进行，不会上传账号或密码。</p>
-            <div className="export-credential-fields">
-              <label>账号<input value={exportUsername} onChange={event => setExportUsername(event.target.value)} autoComplete="username" placeholder="请输入账号" required /></label>
-              <label>密码<input value={exportPassword} onChange={event => setExportPassword(event.target.value)} type="password" autoComplete="current-password" placeholder="请输入密码" required /></label>
-            </div>
-            <div className="export-auth-actions">
-              <button className="confirm-export" type="submit">验证并导出</button>
-              <button className="import-cancel" type="button" onClick={() => setPendingExport(null)}>取消</button>
-            </div>
-          </form>
         </div>
       )}
       <button className={`back-to-top ${showTop ? "is-visible" : ""}`} type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="返回顶部"><ArrowUp size={19} /></button>

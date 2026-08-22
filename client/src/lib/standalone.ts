@@ -23,21 +23,16 @@ const OFFLINE_STYLE_OVERRIDES = String.raw`
 .section.deep{padding:21px 0 8px;border-left:0}.grid{grid-template-columns:repeat(auto-fit,minmax(218px,1fr));justify-content:stretch}.card{border-radius:9px}.card:before,.card:hover:before{display:none}
 `;
 
-const OFFLINE_EXPORT_AUTH = String.raw`
+const OFFLINE_EXPORT_GUARD = String.raw`
 (function(){
-  function protect(id){
-    var button=document.getElementById(id),original=button&&button.onclick;
-    if(!button||!original)return;
+  ['export-json','export-html','export-xlsx','export-csv','export-page'].forEach(function(id){
+    var button=document.getElementById(id);
+    if(!button)return;
     button.onclick=function(event){
       if(event&&event.preventDefault)event.preventDefault();
-      var username=window.prompt('请输入导出账号');
-      if(username!=='admin'){window.alert('账号不正确，无法导出。');return;}
-      var password=window.prompt('请输入导出密码');
-      if(password!=='123456'){window.alert('密码不正确，无法导出。');return;}
-      original.call(button,event);
+      window.alert('离线导航无法验证服务器登录会话。请回到已登录的书签导航主站执行导出。');
     };
-  }
-  ['export-json','export-html','export-xlsx','export-csv','export-page'].forEach(protect);
+  });
 })();
 `;
 
@@ -61,7 +56,7 @@ export function createStandaloneNavigation(bookmarks: BookmarkNode[], iconSource
   const base = createStandaloneNavigationBase(bookmarks, iconSource);
   return base
     .replace("</head>", `<style>${OFFLINE_STYLE_OVERRIDES}</style></head>`)
-    .replace("</body>", `<script>${xlsxBundle}</script><script>${OFFLINE_SPREADSHEET}</script><script>${OFFLINE_EXPORT_AUTH}</script></body>`);
+    .replace("</body>", `<script>${xlsxBundle}</script><script>${OFFLINE_SPREADSHEET}</script><script>${OFFLINE_EXPORT_GUARD}</script></body>`);
 }
 
 function createStandaloneNavigationBase(bookmarks: BookmarkNode[], iconSource: IconSource): string {

@@ -299,14 +299,7 @@
 .import-choice .import-merge { border-left: 4px solid var(--archive-blue); }
 .import-cancel { border: 0; padding: 0; background: transparent; color: var(--ink-soft); font-size: 11px; text-decoration: underline; text-underline-offset: 4px; }
 .import-cancel:hover { color: var(--archive-blue); }
-.export-auth { max-width: 480px; }
-.export-credential-fields { display: grid; gap: 12px; margin: 22px 0 18px; }
-.export-credential-fields label { display: grid; gap: 7px; color: var(--ink-soft); font-size: 11px; font-weight: 700; }
-.export-credential-fields input { min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; outline: 0; background: color-mix(in srgb, var(--paper) 88%, transparent); color: var(--ink); font-size: 13px; transition: border-color .16s var(--ease-out), box-shadow .16s var(--ease-out); }
-.export-credential-fields input:focus { border-color: var(--archive-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--archive-blue) 12%, transparent); }
-.export-auth-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-.confirm-export { min-height: 40px; padding: 0 16px; border: 1px solid var(--archive-blue); border-radius: 8px; background: var(--archive-blue); color: #fffdf7; font-size: 12px; font-weight: 700; }
-.confirm-export:hover { background: var(--archive-blue-deep); }
+.export-session-notice { margin: 11px 0 0; padding: 8px 10px; border-left: 3px solid color-mix(in srgb, var(--archive-blue) 62%, var(--line)); background: color-mix(in srgb, var(--archive-blue) 5%, transparent); color: var(--ink-soft); font-size: 10px; line-height: 1.55; }
 
 .data-tools-modal { width: min(760px, calc(100vw - 32px)); max-height: min(760px, calc(100dvh - 32px)); overflow: auto; padding: 0; border: 1px solid color-mix(in srgb, var(--archive-blue) 42%, var(--line)); border-radius: 14px; background: var(--paper); box-shadow: 0 24px 65px color-mix(in srgb, var(--ink) 28%, transparent); }
 .data-tools-head { display: flex; align-items: start; justify-content: space-between; gap: 20px; padding: 25px 28px 19px; border-bottom: 1px solid var(--line); background: linear-gradient(110deg, color-mix(in srgb, var(--paper-deep) 80%, transparent), color-mix(in srgb, var(--archive-blue) 5%, transparent)); }
@@ -463,6 +456,9 @@
   .bookmark-section:nth-child(2) { animation-delay: .04s; }
   .bookmark-section:nth-child(3) { animation-delay: .08s; }
   @keyframes rise-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+  .bookmark-collection.is-category-transitioning > .bookmark-section,
+  .bookmark-section.is-category-transitioning { animation: category-select .24s var(--ease-out) both; }
+  @keyframes category-select { from { opacity: .45; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
 }
 
 @media (max-width: 1180px) {

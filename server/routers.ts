@@ -39,6 +39,12 @@ export const appRouter = router({
       return { success: true } as const;
     }),
   }),
+  exportAccess: router({
+    authorize: protectedProcedure.query(({ ctx }) => ({
+      authorized: true as const,
+      userId: ctx.user.id,
+    })),
+  }),
   bookmarkBackups: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       return listBookmarkBackups(ctx.user.id);
