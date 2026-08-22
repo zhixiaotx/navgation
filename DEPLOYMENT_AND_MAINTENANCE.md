@@ -19,7 +19,7 @@
 
 | 平台 | 构建命令 | 发布目录 |
 | --- | --- | --- |
-| GitHub Pages | 工作流执行 `pnpm check && pnpm build` | `gh-page` 分支根目录 |
+| GitHub Pages | 工作流执行 `npm run check && npm run build` | `gh-page` 分支根目录 |
 | Cloudflare Pages | `pnpm build` | `dist/public` |
 | Vercel 静态输出 | `pnpm build` | `dist/public` |
 | Netlify | `pnpm build` | `dist/public` |
@@ -32,7 +32,7 @@
 2. 等待 **Build and publish gh-page** 工作流成功。
 3. **Settings → Pages**：选择 **Deploy from a branch**，分支选 `gh-page`，目录选 `/(root)`。
 
-工作流会先通过 `pnpm/action-setup@v4` 安装与本项目 `packageManager` 字段一致的 **pnpm 10.4.1**，然后才启用 `actions/setup-node` 的 pnpm 缓存。这个顺序避免 `setup-node` 在 pnpm 尚不可用时出现 `Unable to locate executable file: pnpm`。
+工作流通过 `actions/setup-node@v4` 使用 **npm 缓存** 和根目录的 `package-lock.json`，随后执行 `npm ci`、类型检查与静态构建。根目录 `.npmrc` 中的 `legacy-peer-deps=true` 用于兼容当前 Vite 插件的历史 peer dependency 声明。项目保留 `pnpm-lock.yaml` 和 `packageManager` 字段，供本地既有 pnpm 开发流程继续使用；GitHub Pages 不再安装或调用 pnpm，因此不会触发 pnpm 版本冲突。
 
 ### Cloudflare Pages、Vercel 与 Netlify
 

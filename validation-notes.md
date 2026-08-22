@@ -64,4 +64,4 @@ README 第 6.5 节后续渲染复核：已在 6.5→6.6、6.6→6.7、6.7→7 �
 
 顶栏密度快捷切换验证：主工具栏在“设置”和“夜阅”之间新增当前视图按钮。初始显示“舒展”；点击后标签更新为“紧凑”，网址集合即时减少卡片内外间距并展示更多入口；再次点击后恢复“舒展”。该按钮复用设置面板的同一浏览器偏好，并在窄屏自动收为带可访问标签的图标按钮。
 
-GitHub Pages 工作流验证：部署工作流已改为先使用 `pnpm/action-setup@v4` 安装 pnpm 10.4.1，再执行 Node 22 配置与 pnpm 缓存。已本地复现工作流关键命令：`pnpm --version` 输出 10.4.1，`pnpm install --frozen-lockfile`、类型检查和 `pnpm build` 均成功；`dist/public` 仍是静态发布目录。
+GitHub Pages 工作流验证：部署工作流现只使用 Node 22、npm 缓存和根目录 `package-lock.json`，不再安装或调用 pnpm。根目录 `.npmrc` 以 `legacy-peer-deps=true` 兼容 `@builder.io/vite-plugin-jsx-loc` 与 Vite 7 的历史 peer dependency 声明，因此工作流仍可使用标准 `npm ci`。已在无 pnpm 链接依赖的隔离副本中完成 `npm ci`、`npm run check`、`npm test` 和 `npm run build`；7 个测试文件、24 个测试全部通过，`dist/public/index.html` 已生成，`git diff --check` 无输出。构建仅保留既有的大资源块提示，未影响生成或发布目录。
