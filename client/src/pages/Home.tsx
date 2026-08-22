@@ -45,7 +45,7 @@ import {
 } from "@/lib/bookmarks";
 import { createStandaloneNavigation } from "@/lib/standalone";
 
-const LOGO_URL = "/manus-storage/archive-index-logo_93b1b85b.png";
+const LOGO_URL = "/manus-storage/archive-index-logo-transparent_3d5f750e.png";
 
 const searchEngines = [
   { id: "bing", label: "必应", region: "全球", url: "https://www.bing.com/search?q=" },
