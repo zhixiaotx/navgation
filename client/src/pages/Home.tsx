@@ -23,6 +23,7 @@ import {
   FolderPlus,
   FolderOpen,
   LogIn,
+  LayoutGrid,
   Move,
   Moon,
   PanelLeftClose,
@@ -890,6 +891,10 @@ export default function Home() {
               <Settings size={16} />
               <span>设置</span>
               <ChevronDown size={14} />
+            </button>
+            <button className={`density-quick-toggle ${cardDensity === "compact" ? "is-compact" : "is-spacious"}`} type="button" onClick={() => setCardDensity(current => current === "compact" ? "spacious" : "compact")} aria-pressed={cardDensity === "compact"} aria-label={`当前为${cardDensity === "compact" ? "紧凑" : "舒展"}卡片视图，点击切换为${cardDensity === "compact" ? "舒展" : "紧凑"}视图`} title={`切换为${cardDensity === "compact" ? "舒展" : "紧凑"}卡片视图`}>
+              <LayoutGrid size={16} />
+              <span>{cardDensity === "compact" ? "紧凑" : "舒展"}</span>
             </button>
             <button className="theme-switch" type="button" onClick={toggleTheme} aria-label="切换日夜模式">
               {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}

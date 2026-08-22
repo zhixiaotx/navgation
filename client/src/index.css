@@ -166,8 +166,9 @@
 .topbar-intro { display: flex; gap: 10px; color: var(--ink-soft); font-size: 11px; letter-spacing: .05em; }
 .topbar-index { color: var(--archive-blue); font-weight: 700; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
-.tool-trigger, .theme-switch { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--paper) 88%, transparent); color: var(--ink); font-size: 12px; font-weight: 600; transition: border-color .16s var(--ease-out), background .16s var(--ease-out), transform .16s var(--ease-out); }
-.tool-trigger:hover, .theme-switch:hover { border-color: color-mix(in srgb, var(--archive-blue) 55%, var(--line)); background: var(--archive-blue-pale); }
+.tool-trigger, .theme-switch, .density-quick-toggle { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--paper) 88%, transparent); color: var(--ink); font-size: 12px; font-weight: 600; transition: border-color .16s var(--ease-out), background .16s var(--ease-out), transform .16s var(--ease-out); }
+.tool-trigger:hover, .theme-switch:hover, .density-quick-toggle:hover { border-color: color-mix(in srgb, var(--archive-blue) 55%, var(--line)); background: var(--archive-blue-pale); }
+.density-quick-toggle.is-compact { border-color: color-mix(in srgb, var(--archive-blue) 55%, var(--line)); background: var(--archive-blue-pale); color: var(--archive-blue-deep); }
 .rotate-180 { transform: rotate(180deg); }
 .responsive-index { display: none; }
 .mobile-tree-panel { display: none; }
@@ -509,8 +510,8 @@
 }
 
 @media (max-width: 610px) {
-  .tool-trigger span, .theme-switch span { display: none; }
-  .tool-trigger, .theme-switch { width: 42px; min-height: 42px; justify-content: center; padding: 0; }
+  .tool-trigger span, .theme-switch span, .density-quick-toggle span { display: none; }
+  .tool-trigger, .theme-switch, .density-quick-toggle { width: 42px; min-height: 42px; justify-content: center; padding: 0; }
   .search-stage { min-height: 355px; }
   .search-stage::before { right: -28px; top: 38px; width: 118px; height: 144px; }
   .search-stage::after { right: 1px; top: 57px; font-size: 27px; }
