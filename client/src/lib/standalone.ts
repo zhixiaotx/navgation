@@ -19,7 +19,36 @@ sources.forEach(function(x){document.getElementById('source').insertAdjacentHTML
 })();
 `;
 
+const OFFLINE_STYLE_OVERRIDES = String.raw`
+.section.deep{padding:21px 0 8px;border-left:0}.grid{grid-template-columns:repeat(auto-fit,minmax(218px,1fr));justify-content:stretch}.card{border-radius:9px}.card:before,.card:hover:before{display:none}
+`;
+
+const OFFLINE_EXPORT_AUTH = String.raw`
+(function(){
+  function protect(id){
+    var button=document.getElementById(id),original=button&&button.onclick;
+    if(!button||!original)return;
+    button.onclick=function(event){
+      if(event&&event.preventDefault)event.preventDefault();
+      var username=window.prompt('请输入导出账号');
+      if(username!=='admin'){window.alert('账号不正确，无法导出。');return;}
+      var password=window.prompt('请输入导出密码');
+      if(password!=='123456'){window.alert('密码不正确，无法导出。');return;}
+      original.call(button,event);
+    };
+  }
+  ['export-json','export-html','export-page'].forEach(protect);
+})();
+`;
+
 export function createStandaloneNavigation(bookmarks: BookmarkNode[], iconSource: IconSource): string {
+  const base = createStandaloneNavigationBase(bookmarks, iconSource);
+  return base
+    .replace("</head>", `<style>${OFFLINE_STYLE_OVERRIDES}</style></head>`)
+    .replace("</script></body>", `${OFFLINE_EXPORT_AUTH}</script></body>`);
+}
+
+function createStandaloneNavigationBase(bookmarks: BookmarkNode[], iconSource: IconSource): string {
   const state = safeData({ bookmarks, iconSource, theme: "light" });
   return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>书签导航 · Archive Index</title><style>${STYLES}</style></head><body><script id="archive-state" type="application/json">${state}</script><div class="shell" id="shell"><aside><div class="brand"><div class="mark"><svg viewBox="0 0 64 64"><path d="M11 12h9v40h-9zM27 6h9v52h-9zM43 15h9v34h-9z"/></svg></div><div><strong>书签导航</strong><small>ARCHIVE INDEX</small></div><button class="side-toggle" id="side-toggle">◧</button></div><nav class="nav"><p class="eyebrow">我的索引</p><button class="all active" data-folder="all">▣ 全部书签 <b id="total"></b></button><div class="tree-actions"><button id="open-all">全部展开</button><button id="close-all">全部收起</button></div><div class="tree-scroll"><ul class="tree" id="tree"></ul></div></nav><div class="foot">共收录 <strong id="side-total"></strong> 个常用入口<br>数据仅保存在此浏览器。</div></aside><main><header class="topbar"><div class="topcopy"><b>A–01 / 2026</b><span>个人入口资料馆 · CATALOGUE</span></div><div class="top-actions"><button class="tool" id="data-toggle">▣ 数据工具⌄</button><button class="tool" id="theme-toggle">◔ 夜阅</button></div></header><section class="console" id="drawer"><div><p class="eyebrow">ARCHIVE CONTROL</p><h2>导入、整理，再带着它走。</h2><p>可读取浏览器导出的 HTML 书签，也可导入本页导出的 JSON 数据。</p></div><div class="stamp">IN</div><div class="data-actions"><button id="import-trigger">导入 JSON / HTML</button><button id="export-json">导出 JSON</button><button id="export-html">导出书签 HTML</button><button id="export-page">导出单页导航</button></div></section><section class="hero"><div class="hero-in"><p class="eyebrow">个人导航台</p><h1>从这里，回到<br><em>每一个常用入口。</em></h1><div class="workbench"><div class="searchbox">⌕ <input id="search" placeholder="站内查找，或输入关键词检索全网"></div><select id="engine"></select><button id="external-search">全网检索 ↗</button></div><p class="helper">⌘ 输入即可筛选　按 Enter 使用所选引擎检索</p></div></section><section class="toolbar"><div><p class="eyebrow">书签目录</p><h2 id="toolbar-title">全部分类</h2></div><label class="source">图标来源 <select id="source"></select></label></section><div class="collection" id="collection"></div><footer class="footer"><p>ARCHIVE INDEX · 本地书签工作台</p><p>ⓘ 图标服务可能受网络与站点策略影响，系统会自动尝试备用来源。</p></footer></main></div><input id="import-file" type="file" accept=".json,.html,.htm,application/json,text/html" hidden><button class="top" id="top">↑</button><div class="notice" id="notice"></div><div class="modal" id="modal"><section class="choice"><p class="eyebrow">导入已解析</p><h2 id="choice-title"></h2><p>导入结果会保留浏览器书签原有层级与出现顺序。请选择如何写入此离线资料馆。</p><div class="choices"><button id="replace"><strong>覆盖导入</strong><span>清空当前数据，完整使用本次书签。</span></button><button id="merge"><strong>增量导入</strong><span>合并同名分类，按 URL 去重，新增节点保持原始顺序。</span></button></div><button class="cancel" id="cancel">取消本次导入</button></section></div><script>${APP_SCRIPT}</script></body></html>`;
 }

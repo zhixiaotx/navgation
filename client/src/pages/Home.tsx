@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  Cloud,
   Command,
   Download,
   ExternalLink,
@@ -17,13 +18,18 @@ import {
   FileUp,
   FolderClosed,
   FolderOpen,
+  LogIn,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  RotateCcw,
   Search,
   Sun,
 } from "lucide-react";
+import { startLogin } from "@/const";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
+import { trpc } from "@/lib/trpc";
 import {
   archiveForExport,
   BookmarkFolder,
@@ -45,9 +51,18 @@ import {
 } from "@/lib/bookmarks";
 import { createStandaloneNavigation } from "@/lib/standalone";
 
-const LOGO_URL = "/manus-storage/archive-index-logo-transparent_3d5f750e.png";
-const DEFAULT_BOOKMARKS_URL = "/manus-storage/default-bookmarks-v20260822_6faf3fe2.json";
+const LOGO_URL = "/manus-storage/archive-index-logo_491f7249.png";
+const DEFAULT_BOOKMARKS_URL = "./data/default-bookmarks.json";
 const DEFAULT_DATA_VERSION = "2026-08-22";
+const EXPORT_USERNAME = "admin";
+const EXPORT_PASSWORD = "123456";
+
+type ExportKind = "json" | "html" | "standalone";
+type PendingImport = {
+  nodes: BookmarkNode[];
+  fileName: string;
+  jsonContent?: string;
+};
 
 const searchEngines = [
   { id: "bing", label: "必应", region: "全球", url: "https://www.bing.com/search?q=" },
@@ -221,6 +236,7 @@ function FolderSection({
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [bookmarks, setBookmarks] = useState<BookmarkNode[]>(() => {
     try {
       const saved = localStorage.getItem("archive-index-bookmarks");
@@ -240,10 +256,28 @@ export default function Home() {
   const [engine, setEngine] = useState("bing");
   const [showTools, setShowTools] = useState(false);
   const [showTop, setShowTop] = useState(false);
-  const [pendingImport, setPendingImport] = useState<BookmarkNode[] | null>(null);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  const [pendingExport, setPendingExport] = useState<ExportKind | null>(null);
+  const [exportUsername, setExportUsername] = useState("");
+  const [exportPassword, setExportPassword] = useState("");
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
+  const cloudBackups = trpc.bookmarkBackups.list.useQuery(undefined, {
+    enabled: isAuthenticated,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const saveCloudBackup = trpc.bookmarkBackups.save.useMutation({
+    onSuccess: async result => {
+      await cloudBackups.refetch();
+      toast.success("已保存云端备份", { description: `${result.fileName} · ${result.bookmarkCount} 个入口` });
+    },
+    onError: error => {
+      toast.error("云端备份未保存", { description: error.message });
+    },
+  });
+  const accessCloudBackup = trpc.bookmarkBackups.access.useMutation();
 
   const topFolders = useMemo(() => {
     const rootBookmarks = bookmarks.filter(node => !isFolder(node));
@@ -365,8 +399,9 @@ export default function Home() {
     if (!file) return;
     try {
       const content = await file.text();
-      const next = file.name.toLowerCase().endsWith(".json") ? normalizeArchive(JSON.parse(content)) : parseBrowserBookmarkHtml(content);
-      setPendingImport(next);
+      const isJson = file.name.toLowerCase().endsWith(".json");
+      const next = isJson ? normalizeArchive(JSON.parse(content)) : parseBrowserBookmarkHtml(content);
+      setPendingImport({ nodes: next, fileName: file.name, jsonContent: isJson ? content : undefined });
     } catch (error) {
       toast.error("导入未完成", { description: error instanceof Error ? error.message : "无法读取该文件。" });
     } finally {
@@ -376,7 +411,8 @@ export default function Home() {
 
   function applyImport(mode: "replace" | "merge") {
     if (!pendingImport) return;
-    const next = mode === "replace" ? pendingImport : mergeBookmarkNodes(bookmarks, pendingImport);
+    const imported = pendingImport;
+    const next = mode === "replace" ? imported.nodes : mergeBookmarkNodes(bookmarks, imported.nodes);
     setBookmarks(next);
     setSelectedFolder(firstFolderId(next));
     setExpandedFolders(new Set(flattenFolders(next)));
@@ -385,6 +421,40 @@ export default function Home() {
     toast.success(mode === "replace" ? "书签已覆盖导入" : "书签已增量导入", {
       description: mode === "replace" ? `已按原始层级与顺序建立 ${countBookmarks(next)} 个入口。` : "已合并同名分类，按 URL 去重，并保留原有顺序。",
     });
+    if (imported.jsonContent && isAuthenticated) {
+      saveCloudBackup.mutate({ fileName: imported.fileName, content: imported.jsonContent, source: "import" });
+    } else if (imported.jsonContent) {
+      toast.message("JSON 已导入本地", { description: "登录后可使用“同步当前数据”将本地书签保存为云端备份。" });
+    }
+  }
+
+  async function syncCurrentBookmarks() {
+    if (!isAuthenticated) {
+      startLogin();
+      return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    await saveCloudBackup.mutateAsync({
+      fileName: `bookmark-snapshot-${stamp}.json`,
+      content: JSON.stringify(archiveForExport(bookmarks, iconSource), null, 2),
+      source: "snapshot",
+    });
+  }
+
+  async function restoreCloudBackup(id: number) {
+    try {
+      const backup = await accessCloudBackup.mutateAsync({ id });
+      const response = await fetch(backup.url);
+      if (!response.ok) throw new Error("无法读取云端备份文件。");
+      const next = normalizeArchive(await response.json());
+      setBookmarks(next);
+      setSelectedFolder(firstFolderId(next));
+      setExpandedFolders(new Set(flattenFolders(next)));
+      setMobileTreeOpen(true);
+      toast.success("已恢复云端备份", { description: `${backup.fileName} · ${backup.bookmarkCount} 个入口已写入当前浏览器。` });
+    } catch (error) {
+      toast.error("恢复云端备份失败", { description: error instanceof Error ? error.message : "请稍后重试。" });
+    }
   }
 
   function exportJson() {
@@ -400,6 +470,27 @@ export default function Home() {
   function exportStandalone() {
     downloadFile("bookmark-navigation.html", createStandaloneNavigation(bookmarks, iconSource), "text/html;charset=utf-8");
     toast.success("已导出单页导航", { description: "该 HTML 文件可本地双击打开，并保留搜索、分类、主题和数据工具。" });
+  }
+
+  function requestExport(kind: ExportKind) {
+    setExportUsername("");
+    setExportPassword("");
+    setPendingExport(kind);
+  }
+
+  function verifyAndExport(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (exportUsername !== EXPORT_USERNAME || exportPassword !== EXPORT_PASSWORD) {
+      toast.error("账号或密码不正确", { description: "请使用管理员账号后再次导出。" });
+      return;
+    }
+
+    const selectedExport = pendingExport;
+    setPendingExport(null);
+    setExportPassword("");
+    if (selectedExport === "json") exportJson();
+    if (selectedExport === "html") exportHtml();
+    if (selectedExport === "standalone") exportStandalone();
   }
 
   return (
@@ -437,7 +528,7 @@ export default function Home() {
         <div className="sidebar-footnote">
           <span className="archive-rule" />
           <p>共收录 <strong>{totalBookmarks}</strong> 个常用入口</p>
-          <p>数据仅保存在此浏览器。</p>
+          <p>本地使用；登录后可云端备份。</p>
         </div>
       </aside>
 
@@ -503,15 +594,42 @@ export default function Home() {
             <div className="data-console-copy">
               <span>ARCHIVE CONTROL</span>
               <h2>导入、整理，再带着它走。</h2>
-              <p>可读取 Chrome、Edge、Firefox 等浏览器导出的 HTML 书签，也可导入本页导出的 JSON 数据。</p>
+              <p>可读取 Chrome、Edge、Firefox 等浏览器导出的 HTML 书签，也可导入本页导出的 JSON 数据。登录后，JSON 可自动保存为你的私有云端备份。</p>
             </div>
             <div className="intake-stamp" aria-hidden="true"><span>IN</span><i>01</i><small>ARCHIVE</small></div>
             <div className="data-console-actions">
               <button className="primary-tool" type="button" onClick={() => importRef.current?.click()}><FileUp size={17} />导入 JSON / HTML</button>
-              <button type="button" onClick={exportJson}><FileJson2 size={17} />导出 JSON</button>
-              <button type="button" onClick={exportHtml}><Download size={17} />导出书签 HTML</button>
-              <button type="button" onClick={exportStandalone}><Archive size={17} />导出单页导航</button>
+              <button type="button" onClick={() => requestExport("json")}><FileJson2 size={17} />导出 JSON</button>
+              <button type="button" onClick={() => requestExport("html")}><Download size={17} />导出书签 HTML</button>
+              <button type="button" onClick={() => requestExport("standalone")}><Archive size={17} />导出单页导航</button>
             </div>
+            <section className="cloud-backup-panel" aria-label="云端书签备份">
+              <div className="cloud-backup-copy">
+                <span><Cloud size={16} /> 云端备份</span>
+                <p>{isAuthenticated ? `已登录为 ${user?.name || "当前用户"}。导入的 JSON 会自动保存；也可同步本浏览器当前数据。` : "登录后可把 JSON 导入文件和当前浏览器书签保存为私有云端备份。"}</p>
+              </div>
+              {isAuthenticated ? (
+                <div className="cloud-backup-controls">
+                  <button type="button" className="cloud-sync-button" onClick={syncCurrentBookmarks} disabled={saveCloudBackup.isPending || !archiveReady}>
+                    <Cloud size={16} />{saveCloudBackup.isPending ? "正在同步…" : "同步当前数据"}
+                  </button>
+                  <div className="cloud-backup-list" aria-live="polite">
+                    {cloudBackups.isLoading ? <p>正在读取云端备份…</p> : cloudBackups.data?.length ? (
+                      <ul>
+                        {cloudBackups.data.map(backup => (
+                          <li key={backup.id}>
+                            <div><strong>{backup.fileName}</strong><span>{backup.bookmarkCount} 个入口 · {new Date(backup.createdAt).toLocaleString("zh-CN")}</span></div>
+                            <button type="button" onClick={() => restoreCloudBackup(backup.id)} disabled={accessCloudBackup.isPending}><RotateCcw size={14} />恢复</button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p>暂无云端备份。同步或导入 JSON 后会显示在这里。</p>}
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="cloud-login-button" onClick={startLogin} disabled={authLoading}><LogIn size={16} />{authLoading ? "正在检查登录状态…" : "登录以启用云端备份"}</button>
+              )}
+            </section>
           </section>
         )}
 
@@ -584,7 +702,7 @@ export default function Home() {
         <div className="import-overlay" role="dialog" aria-modal="true" aria-labelledby="import-choice-title">
           <section className="import-choice">
             <span className="eyebrow">导入已解析</span>
-            <h2 id="import-choice-title">检测到 {countBookmarks(pendingImport)} 个书签，{countFolders(pendingImport)} 个分类。</h2>
+            <h2 id="import-choice-title">检测到 {countBookmarks(pendingImport.nodes)} 个书签，{countFolders(pendingImport.nodes)} 个分类。</h2>
             <p>导入结果会严格保留浏览器书签原有的分类层级和出现顺序。请选择本次数据如何写入资料馆。</p>
             <div className="import-choice-actions">
               <button className="import-replace" type="button" onClick={() => applyImport("replace")}><strong>覆盖导入</strong><span>清空当前数据，完整使用本次书签。</span></button>
@@ -592,6 +710,23 @@ export default function Home() {
             </div>
             <button className="import-cancel" type="button" onClick={() => setPendingImport(null)}>取消本次导入</button>
           </section>
+        </div>
+      )}
+      {pendingExport && (
+        <div className="import-overlay" role="dialog" aria-modal="true" aria-labelledby="export-auth-title">
+          <form className="import-choice export-auth" onSubmit={verifyAndExport}>
+            <span className="eyebrow">EXPORT AUTHORIZATION</span>
+            <h2 id="export-auth-title">验证后导出{pendingExport === "json" ? " JSON 数据" : pendingExport === "html" ? "书签 HTML" : "单页导航"}</h2>
+            <p>导出操作需要管理员验证。此验证仅在当前浏览器中进行，不会上传账号或密码。</p>
+            <div className="export-credential-fields">
+              <label>账号<input value={exportUsername} onChange={event => setExportUsername(event.target.value)} autoComplete="username" placeholder="请输入账号" required /></label>
+              <label>密码<input value={exportPassword} onChange={event => setExportPassword(event.target.value)} type="password" autoComplete="current-password" placeholder="请输入密码" required /></label>
+            </div>
+            <div className="export-auth-actions">
+              <button className="confirm-export" type="submit">验证并导出</button>
+              <button className="import-cancel" type="button" onClick={() => setPendingExport(null)}>取消</button>
+            </div>
+          </form>
         </div>
       )}
       <button className={`back-to-top ${showTop ? "is-visible" : ""}`} type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="返回顶部"><ArrowUp size={19} /></button>

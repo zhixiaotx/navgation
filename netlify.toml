@@ -1,0 +1,12 @@
+[build]
+  command = "pnpm build"
+  publish = "dist/public"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[headers]]
+  for = "/data/default-bookmarks.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
