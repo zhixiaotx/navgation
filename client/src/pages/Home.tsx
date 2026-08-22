@@ -175,25 +175,53 @@ function BookmarkCard({ item, iconSource, sectionTitle }: { item: BookmarkItem &
   );
 }
 
-function FolderSection({ folder, iconSource, query }: { folder: BookmarkFolder; iconSource: IconSource; query: string }) {
+function FolderSection({
+  folder,
+  iconSource,
+  query,
+  level = 0,
+  ancestry = [],
+}: {
+  folder: BookmarkFolder;
+  iconSource: IconSource;
+  query: string;
+  level?: number;
+  ancestry?: string[];
+}) {
   const search = query.trim().toLowerCase();
-  const items = flattenBookmarks(folder.children);
-  const visible = search ? items.filter(item => `${item.title} ${item.url} ${item.description ?? ""} ${item.path.join(" ")}`.toLowerCase().includes(search)) : items;
+  const folderPath = [...ancestry, folder.title];
+  const directItems = folder.children
+    .filter((node): node is BookmarkItem => !isFolder(node))
+    .map(item => ({ ...item, path: folderPath }));
+  const matchesSearch = (item: BookmarkItem & { path: string[] }) => `${item.title} ${item.url} ${item.description ?? ""} ${item.path.join(" ")}`.toLowerCase().includes(search);
+  const visible = search ? directItems.filter(matchesSearch) : directItems;
+  const subtreeItems = flattenBookmarks(folder.children).map(item => ({ ...item, path: [...folderPath, ...item.path] }));
+  const subtreeCount = search
+    ? subtreeItems.filter(item => `${item.title} ${item.url} ${item.description ?? ""} ${item.path.join(" ")}`.toLowerCase().includes(search)).length
+    : subtreeItems.length;
+  const childFolders = folder.children.filter(isFolder);
 
-  if (!visible.length) return null;
+  if (!subtreeCount) return null;
   return (
-    <section className="bookmark-section" id={`section-${folder.id}`}>
+    <section className={`bookmark-section ${level > 0 ? "is-nested" : ""}`} id={`section-${folder.id}`}>
       <header className="section-heading">
         <span className="section-tab" />
         <div>
-          <p>分类目录</p>
+          <p>{level ? `第 ${level + 1} 级分类` : "分类目录"}</p>
           <h2>{folder.title}</h2>
         </div>
-        <span className="section-count">{visible.length.toString().padStart(2, "0")}</span>
+        <span className="section-count">{subtreeCount.toString().padStart(2, "0")}</span>
       </header>
-      <div className="bookmark-grid">
-        {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} sectionTitle={folder.title} />)}
-      </div>
+      {visible.length > 0 && (
+        <div className="bookmark-grid">
+          {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} sectionTitle={folder.title} />)}
+        </div>
+      )}
+      {childFolders.length > 0 && (
+        <div className="nested-bookmark-sections">
+          {childFolders.map(child => <FolderSection key={child.id} folder={child} iconSource={iconSource} query={query} level={level + 1} ancestry={folderPath} />)}
+        </div>
+      )}
     </section>
   );
 }
