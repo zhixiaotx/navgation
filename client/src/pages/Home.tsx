@@ -35,6 +35,7 @@ import {
   IconSource,
   iconSources,
   isFolder,
+  mergeBookmarkNodes,
   normalizeArchive,
   parseBrowserBookmarkHtml,
   sampleBookmarks,
@@ -45,12 +46,26 @@ import { createStandaloneNavigation } from "@/lib/standalone";
 const LOGO_URL = "/manus-storage/archive-index-logo_93b1b85b.png";
 
 const searchEngines = [
-  { id: "bing", label: "必应", url: "https://www.bing.com/search?q=" },
-  { id: "google", label: "Google", url: "https://www.google.com/search?q=" },
-  { id: "baidu", label: "百度", url: "https://www.baidu.com/s?wd=" },
-  { id: "sogou", label: "搜狗", url: "https://www.sogou.com/web?query=" },
-  { id: "duckduckgo", label: "DuckDuckGo", url: "https://duckduckgo.com/?q=" },
-  { id: "yandex", label: "Yandex", url: "https://yandex.com/search/?text=" },
+  { id: "bing", label: "必应", region: "全球", url: "https://www.bing.com/search?q=" },
+  { id: "baidu", label: "百度", region: "国内", url: "https://www.baidu.com/s?wd=" },
+  { id: "sogou", label: "搜狗", region: "国内", url: "https://www.sogou.com/web?query=" },
+  { id: "360", label: "360 搜索", region: "国内", url: "https://www.so.com/s?q=" },
+  { id: "shenma", label: "神马", region: "国内", url: "https://m.sm.cn/s?q=" },
+  { id: "quark", label: "夸克", region: "国内", url: "https://quark.sm.cn/s?q=" },
+  { id: "wechat", label: "微信文章", region: "国内", url: "https://weixin.sogou.com/weixin?type=2&query=" },
+  { id: "toutiao", label: "头条搜索", region: "国内", url: "https://so.toutiao.com/search?keyword=" },
+  { id: "google", label: "Google", region: "海外", url: "https://www.google.com/search?q=" },
+  { id: "duckduckgo", label: "DuckDuckGo", region: "海外", url: "https://duckduckgo.com/?q=" },
+  { id: "yahoo", label: "Yahoo", region: "海外", url: "https://search.yahoo.com/search?p=" },
+  { id: "yandex", label: "Yandex", region: "海外", url: "https://yandex.com/search/?text=" },
+  { id: "brave", label: "Brave Search", region: "海外", url: "https://search.brave.com/search?q=" },
+  { id: "startpage", label: "Startpage", region: "海外", url: "https://www.startpage.com/sp/search?query=" },
+  { id: "ecosia", label: "Ecosia", region: "海外", url: "https://www.ecosia.org/search?q=" },
+  { id: "qwant", label: "Qwant", region: "海外", url: "https://www.qwant.com/?q=" },
+  { id: "swisscows", label: "Swisscows", region: "海外", url: "https://swisscows.com/web?query=" },
+  { id: "naver", label: "Naver", region: "海外", url: "https://search.naver.com/search.naver?query=" },
+  { id: "kagi", label: "Kagi", region: "海外", url: "https://kagi.com/search?q=" },
+  { id: "scholar", label: "Google Scholar", region: "海外", url: "https://scholar.google.com/scholar?q=" },
 ];
 
 function downloadFile(filename: string, content: string, type: string) {
@@ -137,7 +152,7 @@ function FolderTree({
 
 function BookmarkCard({ item, iconSource, accession }: { item: BookmarkItem; iconSource: IconSource; accession: string }) {
   return (
-    <a className="bookmark-card" href={item.url} target="_blank" rel="noreferrer">
+    <a className="bookmark-card" data-accession={accession} href={item.url} target="_blank" rel="noreferrer">
       <BookmarkIcon item={item} source={iconSource} />
       <span className="bookmark-body">
         <span className="bookmark-title">{item.title}</span>
@@ -189,9 +204,14 @@ export default function Home() {
   const [engine, setEngine] = useState("bing");
   const [showTools, setShowTools] = useState(false);
   const [showTop, setShowTop] = useState(false);
+  const [pendingImport, setPendingImport] = useState<BookmarkNode[] | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  const topFolders = useMemo(() => bookmarks.filter(isFolder), [bookmarks]);
+  const topFolders = useMemo(() => {
+    const rootBookmarks = bookmarks.filter(node => !isFolder(node));
+    const folders = bookmarks.filter(isFolder);
+    return rootBookmarks.length ? [{ id: "root-ungrouped", type: "folder" as const, title: "未分类书签", children: rootBookmarks }, ...folders] : folders;
+  }, [bookmarks]);
   const totalBookmarks = useMemo(() => countBookmarks(bookmarks), [bookmarks]);
   const allItems = useMemo(() => flattenBookmarks(bookmarks), [bookmarks]);
   const isFiltering = query.trim().length > 0;
@@ -233,6 +253,14 @@ export default function Home() {
     window.setTimeout(() => document.getElementById(`section-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
 
+  function expandAllFolders() {
+    setExpandedFolders(new Set(flattenFolders(bookmarks)));
+  }
+
+  function collapseAllFolders() {
+    setExpandedFolders(new Set());
+  }
+
   function runExternalSearch() {
     const words = query.trim();
     if (!words) {
@@ -249,15 +277,24 @@ export default function Home() {
     try {
       const content = await file.text();
       const next = file.name.toLowerCase().endsWith(".json") ? normalizeArchive(JSON.parse(content)) : parseBrowserBookmarkHtml(content);
-      setBookmarks(next);
-      setSelectedFolder(firstFolderId(next));
-      setExpandedFolders(new Set(flattenFolders(next)));
-      toast.success("书签已导入", { description: `已建立 ${countBookmarks(next)} 个入口的分类索引。` });
+      setPendingImport(next);
     } catch (error) {
       toast.error("导入未完成", { description: error instanceof Error ? error.message : "无法读取该文件。" });
     } finally {
       event.target.value = "";
     }
+  }
+
+  function applyImport(mode: "replace" | "merge") {
+    if (!pendingImport) return;
+    const next = mode === "replace" ? pendingImport : mergeBookmarkNodes(bookmarks, pendingImport);
+    setBookmarks(next);
+    setSelectedFolder(firstFolderId(next));
+    setExpandedFolders(new Set(flattenFolders(next)));
+    setPendingImport(null);
+    toast.success(mode === "replace" ? "书签已覆盖导入" : "书签已增量导入", {
+      description: mode === "replace" ? `已按原始层级与顺序建立 ${countBookmarks(next)} 个入口。` : "已合并同名分类，按 URL 去重，并保留原有顺序。",
+    });
   }
 
   function exportJson() {
@@ -293,6 +330,10 @@ export default function Home() {
             <span>全部书签</span>
             <small>{totalBookmarks}</small>
           </button>
+          <div className="tree-actions" aria-label="分类展开控制">
+            <button type="button" onClick={expandAllFolders}>全部展开</button>
+            <button type="button" onClick={collapseAllFolders}>全部收起</button>
+          </div>
           <ul className="tree-list">
             {topFolders.map(folder => <FolderTree key={folder.id} folder={folder} selectedId={selectedFolder} expanded={expandedFolders} onSelect={selectFolder} onToggle={toggleFolder} />)}
           </ul>
@@ -356,7 +397,11 @@ export default function Home() {
               </div>
               <div className="search-tools">
                 <select value={engine} onChange={event => setEngine(event.target.value)} aria-label="选择外部搜索引擎">
-                  {searchEngines.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  {(["国内", "全球", "海外"] as const).map(region => (
+                    <optgroup key={region} label={region}>
+                      {searchEngines.filter(item => item.region === region).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    </optgroup>
+                  ))}
                 </select>
                 <button type="button" onClick={runExternalSearch}>全网检索 <ExternalLink size={15} /></button>
               </div>
@@ -402,6 +447,20 @@ export default function Home() {
       </main>
 
       <input ref={importRef} className="sr-only" type="file" accept=".json,.html,.htm,application/json,text/html" onChange={importBookmarks} />
+      {pendingImport && (
+        <div className="import-overlay" role="dialog" aria-modal="true" aria-labelledby="import-choice-title">
+          <section className="import-choice">
+            <span className="eyebrow">导入已解析</span>
+            <h2 id="import-choice-title">检测到 {countBookmarks(pendingImport)} 个书签，{countFolders(pendingImport)} 个分类。</h2>
+            <p>导入结果会严格保留浏览器书签原有的分类层级和出现顺序。请选择本次数据如何写入资料馆。</p>
+            <div className="import-choice-actions">
+              <button className="import-replace" type="button" onClick={() => applyImport("replace")}><strong>覆盖导入</strong><span>清空当前数据，完整使用本次书签。</span></button>
+              <button className="import-merge" type="button" onClick={() => applyImport("merge")}><strong>增量导入</strong><span>合并同名分类，按 URL 去重，新增内容保留原始顺序。</span></button>
+            </div>
+            <button className="import-cancel" type="button" onClick={() => setPendingImport(null)}>取消本次导入</button>
+          </section>
+        </div>
+      )}
       <button className={`back-to-top ${showTop ? "is-visible" : ""}`} type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="返回顶部"><ArrowUp size={19} /></button>
     </div>
   );
@@ -409,4 +468,8 @@ export default function Home() {
 
 function flattenFolders(nodes: BookmarkNode[]): string[] {
   return nodes.flatMap(node => isFolder(node) ? [node.id, ...flattenFolders(node.children)] : []);
+}
+
+function countFolders(nodes: BookmarkNode[]): number {
+  return nodes.reduce((total, node) => total + (isFolder(node) ? 1 + countFolders(node.children) : 0), 0);
 }

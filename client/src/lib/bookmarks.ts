@@ -307,47 +307,110 @@ export function normalizeArchive(value: unknown): BookmarkNode[] {
 }
 
 export function parseBrowserBookmarkHtml(html: string): BookmarkNode[] {
-  const documentNode = new DOMParser().parseFromString(html, "text/html");
-  const root = documentNode.querySelector("dl");
-  if (!root) throw new Error("该 HTML 文件不是标准浏览器书签导出文件。");
+  if (!/<dl\b/i.test(html) || !/<(?:a|h3)\b/i.test(html)) {
+    throw new Error("该 HTML 文件不是标准浏览器书签导出文件。");
+  }
 
-  const parseFolder = (container: Element): BookmarkNode[] => {
-    const nodes: BookmarkNode[] = [];
-    const entries = Array.from(container.children).filter(child => child.tagName.toLowerCase() === "dt");
-    for (const entry of entries) {
-      const link = entry.querySelector("a[href]");
-      const folderName = entry.querySelector("h3");
-      if (link) {
-        const url = link.getAttribute("href") ?? "";
-        if (/^https?:\/\//i.test(url)) {
-          nodes.push({
-            id: makeId("bookmark"),
-            type: "bookmark",
-            title: link.textContent?.trim() || getHostname(url) || "未命名书签",
-            url,
-            description: link.getAttribute("data-description") || undefined,
-          });
-        }
-        continue;
+  const decodeHtml = (value: string) => value
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (_match, entity: string) => {
+      if (entity.charAt(0) === "#") {
+        const code = entity.charAt(1).toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);
+        return Number.isFinite(code) ? String.fromCharCode(code) : "";
       }
-      if (folderName) {
-        const directNested = entry.querySelector("dl");
-        const adjacentNested = entry.nextElementSibling?.matches("dl") ? entry.nextElementSibling : null;
-        const nested = directNested ?? adjacentNested;
-        nodes.push({
-          id: makeId("folder"),
-          type: "folder",
-          title: folderName.textContent?.trim() || "未命名分类",
-          children: nested ? parseFolder(nested) : [],
+      return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " } as Record<string, string>)[entity.toLowerCase()] ?? "";
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+  const readHref = (attributes: string) => {
+    const match = attributes.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    return decodeHtml(match?.[1] ?? match?.[2] ?? match?.[3] ?? "");
+  };
+  const readDescription = (attributes: string) => {
+    const match = attributes.match(/\bdata-description\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    return decodeHtml(match?.[1] ?? match?.[2] ?? match?.[3] ?? "") || undefined;
+  };
+
+  const root: BookmarkNode[] = [];
+  const folders: BookmarkNode[][] = [root];
+  let pendingFolder: BookmarkFolder | null = null;
+  let depth = 0;
+  const tokenPattern = /<(\/?)dl\b[^>]*>|<h3\b[^>]*>([\s\S]*?)<\/h3\s*>|<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi;
+  let token: RegExpExecArray | null;
+
+  while ((token = tokenPattern.exec(html))) {
+    const [full, closingDl, h3Title, anchorAttributes, anchorTitle] = token;
+    if (/^<\/?dl\b/i.test(full)) {
+      if (closingDl) {
+        if (depth > 1) folders.pop();
+        depth = Math.max(0, depth - 1);
+      } else {
+        if (depth > 0 && pendingFolder) {
+          folders.push(pendingFolder.children);
+          pendingFolder = null;
+        }
+        depth += 1;
+      }
+      continue;
+    }
+    if (typeof h3Title === "string") {
+      const folder: BookmarkFolder = {
+        id: makeId("folder"),
+        type: "folder",
+        title: decodeHtml(h3Title) || "未命名分类",
+        children: [],
+      };
+      folders[folders.length - 1].push(folder);
+      pendingFolder = folder;
+      continue;
+    }
+    if (typeof anchorAttributes === "string") {
+      const url = readHref(anchorAttributes);
+      if (/^https?:\/\//i.test(url)) {
+        folders[folders.length - 1].push({
+          id: makeId("bookmark"),
+          type: "bookmark",
+          title: decodeHtml(anchorTitle || "") || getHostname(url) || "未命名书签",
+          url,
+          description: readDescription(anchorAttributes),
         });
       }
     }
-    return nodes;
-  };
+  }
 
-  const result = parseFolder(root);
+  const result = root;
   if (!result.length) throw new Error("没有找到可导入的书签链接。");
   return result;
+}
+
+function cloneNode(node: BookmarkNode): BookmarkNode {
+  return isFolder(node) ? { ...node, children: node.children.map(cloneNode) } : { ...node };
+}
+
+function comparableTitle(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+/**
+ * 以既有分类为主顺序，逐层合并新导入内容；同名文件夹递归并入、同 URL 链接去重，
+ * 未出现过的节点则严格按导入文件原有顺序追加。
+ */
+export function mergeBookmarkNodes(current: BookmarkNode[], incoming: BookmarkNode[]): BookmarkNode[] {
+  const output = current.map(cloneNode);
+  for (const candidate of incoming) {
+    if (isFolder(candidate)) {
+      const existing = output.find(node => isFolder(node) && comparableTitle(node.title) === comparableTitle(candidate.title));
+      if (existing && isFolder(existing)) {
+        existing.children = mergeBookmarkNodes(existing.children, candidate.children);
+      } else {
+        output.push(cloneNode(candidate));
+      }
+      continue;
+    }
+    const alreadyExists = output.some(node => !isFolder(node) && node.url === candidate.url);
+    if (!alreadyExists) output.push(cloneNode(candidate));
+  }
+  return output;
 }
 
 function escapeHtml(value: string): string {

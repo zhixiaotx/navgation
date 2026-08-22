@@ -115,7 +115,8 @@
   overflow-y: auto;
 }
 
-.brand-lockup { display: flex; align-items: center; gap: 11px; padding: 0 8px 31px; }
+.brand-lockup { position: relative; display: flex; align-items: center; gap: 11px; padding: 0 8px 31px; }
+.brand-lockup::after { content: "CAT. / A–01"; position: absolute; left: 60px; bottom: 14px; color: var(--archive-blue); font-size: 8px; font-weight: 700; letter-spacing: .14em; }
 .brand-logo { width: 41px; height: 41px; object-fit: contain; flex: 0 0 auto; }
 .brand-lockup strong { display: block; font-family: "DM Serif Display", "Noto Serif SC", serif; font-size: 20px; letter-spacing: .02em; line-height: 1; }
 .brand-lockup span { display: block; margin-top: 6px; color: var(--ink-soft); font-size: 9px; font-weight: 700; letter-spacing: .17em; }
@@ -129,13 +130,18 @@
 .all-bookmarks:hover, .all-bookmarks.is-selected { background: var(--archive-blue-pale); color: var(--archive-blue-deep); }
 .all-bookmarks:active, .tree-row button:active, .topbar button:active, .data-console button:active, .search-tools button:active, .back-to-top:active { transform: scale(.97); }
 .tree-list { margin: 5px 0 0; padding: 0; list-style: none; }
+.tree-actions { display: flex; gap: 9px; padding: 5px 11px 4px; }
+.tree-actions button { border: 0; padding: 0; background: transparent; color: var(--ink-soft); font-size: 10px; line-height: 1.3; text-decoration: underline; text-underline-offset: 3px; }
+.tree-actions button:hover { color: var(--archive-blue); }
 .child-tree { margin: 0; overflow: hidden; }
-.tree-row { display: flex; align-items: center; min-width: 0; margin: 2px 0; border-radius: 9px; transition: background .16s var(--ease-out); }
+.tree-row { position: relative; display: flex; align-items: center; min-width: 0; margin: 2px 0; border-radius: 9px; transition: background .16s var(--ease-out); }
+.tree-row.is-selected::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; background: var(--archive-blue); }
 .tree-row:hover, .tree-row.is-selected { background: color-mix(in srgb, var(--archive-blue) 7%, transparent); }
 .tree-expand { display: grid; place-items: center; width: 26px; height: 32px; color: var(--ink-soft); }
 .tree-select { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 0; color: var(--ink); font-size: 13px; text-align: left; }
 .tree-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-select small { margin-left: auto; color: var(--ink-soft); font-size: 10px; font-variant-numeric: tabular-nums; }
+.tree-select small { margin-left: auto; min-width: 18px; color: var(--ink-soft); font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
+.tree-row.is-selected .tree-select small { color: var(--archive-blue); font-weight: 700; }
 .tree-row.is-selected .tree-select, .tree-row.is-selected .tree-expand { color: var(--archive-blue-deep); }
 .sidebar-footnote { margin-top: auto; padding: 28px 10px 0; color: var(--ink-soft); font-size: 10px; line-height: 1.65; }
 .sidebar-footnote p { margin: 3px 0; }
@@ -193,8 +199,9 @@
 .search-stage-footer span { display: inline-flex; align-items: center; gap: 5px; }
 .dark .search-stage-footer { color: #c2c0b7; }
 
-.content-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 0 3px 19px; border-bottom: 1px solid var(--line); }
-.content-toolbar > div > p { margin: 5px 0 0; font-family: "DM Serif Display", "Noto Serif SC", serif; font-size: 25px; line-height: 1.1; }
+.content-toolbar { position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 0 3px 19px 17px; border-bottom: 1px solid var(--line); }
+.content-toolbar::before { content: "CATALOGUE / HOLDINGS"; position: absolute; left: 0; top: -13px; color: var(--archive-blue); font-size: 8px; font-weight: 700; letter-spacing: .13em; }
+.content-toolbar > div > p { margin: 7px 0 0; font-family: "DM Serif Display", "Noto Serif SC", serif; font-size: 27px; line-height: 1.05; letter-spacing: -.025em; }
 .icon-source-select { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 10px; white-space: nowrap; }
 .icon-source-select select { max-width: 184px; min-height: 32px; padding: 0 8px; border-radius: 7px; font-size: 11px; }
 
@@ -207,7 +214,8 @@
 .section-count { margin-left: auto; padding-bottom: 3px; color: var(--archive-blue); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
 .bookmark-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .bookmark-card { position: relative; display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 88px; padding: 13px; border: 1px solid var(--line); border-radius: 2px 10px 10px 2px; background: color-mix(in srgb, var(--card) 92%, transparent); color: inherit; text-decoration: none; overflow: hidden; transition: border-color .18s var(--ease-out), box-shadow .18s var(--ease-out), transform .18s var(--ease-out), background .18s var(--ease-out); }
-.bookmark-card::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 16px; width: 2px; background: transparent; transition: background .18s var(--ease-out); }
+.bookmark-card::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 4px; background: color-mix(in srgb, var(--archive-blue) 20%, transparent); transition: background .18s var(--ease-out); }
+.bookmark-card::after { content: attr(data-accession); position: absolute; right: 10px; top: 9px; color: color-mix(in srgb, var(--archive-blue) 76%, transparent); font-size: 8px; font-weight: 700; letter-spacing: .12em; }
 .bookmark-card:hover { border-color: color-mix(in srgb, var(--archive-blue) 62%, var(--line)); background: var(--card); box-shadow: 5px 5px 0 color-mix(in srgb, var(--archive-blue) 8%, transparent); transform: translateY(-2px); }
 .bookmark-card:hover::before { background: var(--archive-blue); }
 .bookmark-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px; background: var(--paper-deep); overflow: hidden; }
@@ -217,7 +225,7 @@
 .bookmark-description { overflow: hidden; color: var(--ink-soft); font-size: 10px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .bookmark-catalogue { display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow: hidden; color: color-mix(in srgb, var(--ink-soft) 80%, transparent); font-size: 8px; font-weight: 700; letter-spacing: .06em; line-height: 1.25; text-transform: uppercase; }
 .bookmark-catalogue > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bookmark-catalogue b { flex: 0 0 auto; color: var(--archive-blue); font-size: 8px; letter-spacing: .11em; }
+.bookmark-catalogue b { flex: 0 0 auto; color: var(--archive-blue); font-size: 8px; letter-spacing: .11em; opacity: .66; }
 .bookmark-external { flex: 0 0 auto; color: var(--ink-soft); opacity: .55; transition: color .18s var(--ease-out), opacity .18s var(--ease-out); }
 .bookmark-card:hover .bookmark-external { color: var(--archive-blue); opacity: 1; }
 
@@ -226,6 +234,20 @@
 .empty-archive p { max-width: 420px; margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.7; }
 .empty-index-mark { display: grid; width: 124px; height: 94px; place-content: center; border-top: 3px solid var(--archive-blue); border-bottom: 1px solid var(--archive-blue); color: var(--archive-blue); font-family: "DM Serif Display", serif; font-size: 30px; line-height: .78; letter-spacing: -.05em; text-align: center; transform: rotate(-4deg); }
 .empty-index-mark span:last-child { font-family: "Noto Sans SC", sans-serif; font-size: 8px; font-weight: 700; letter-spacing: .18em; line-height: 1; }
+
+.import-overlay { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--ink) 32%, transparent); backdrop-filter: blur(7px); }
+.import-choice { width: min(570px, 100%); padding: 32px; border: 1px solid color-mix(in srgb, var(--archive-blue) 42%, var(--line)); border-radius: 13px; background: var(--paper); box-shadow: 0 24px 65px color-mix(in srgb, var(--ink) 28%, transparent); }
+.import-choice h2 { max-width: 450px; margin: 8px 0 9px; font-family: "DM Serif Display", "Noto Serif SC", serif; font-size: 31px; font-weight: 400; letter-spacing: -.035em; line-height: 1.16; }
+.import-choice > p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.72; }
+.import-choice-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 23px 0 17px; }
+.import-choice-actions button { display: grid; gap: 5px; min-height: 112px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); text-align: left; transition: border-color .18s var(--ease-out), transform .18s var(--ease-out), background .18s var(--ease-out); }
+.import-choice-actions button:hover { border-color: var(--archive-blue); background: var(--archive-blue-pale); transform: translateY(-2px); }
+.import-choice-actions strong { color: var(--archive-blue-deep); font-size: 14px; }
+.import-choice-actions span { color: var(--ink-soft); font-size: 10px; line-height: 1.6; }
+.import-choice .import-replace { border-left: 4px solid color-mix(in srgb, var(--ink-soft) 58%, var(--line)); }
+.import-choice .import-merge { border-left: 4px solid var(--archive-blue); }
+.import-cancel { border: 0; padding: 0; background: transparent; color: var(--ink-soft); font-size: 11px; text-decoration: underline; text-underline-offset: 4px; }
+.import-cancel:hover { color: var(--archive-blue); }
 
 .archive-footer { display: flex; justify-content: space-between; gap: 20px; padding: 21px 0 32px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 9px; letter-spacing: .04em; }
 .archive-footer p { display: flex; align-items: center; gap: 5px; margin: 0; }
@@ -289,4 +311,7 @@
   .empty-archive { padding: 25px; }
   .empty-index-mark { display: none; }
   .back-to-top { right: 18px; bottom: 18px; }
+  .import-choice { padding: 25px; }
+  .import-choice h2 { font-size: 27px; }
+  .import-choice-actions { grid-template-columns: 1fr; }
 }
