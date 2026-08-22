@@ -157,6 +157,7 @@
 .tool-trigger:hover, .theme-switch:hover { border-color: color-mix(in srgb, var(--archive-blue) 55%, var(--line)); background: var(--archive-blue-pale); }
 .rotate-180 { transform: rotate(180deg); }
 .responsive-index { display: none; }
+.mobile-tree-panel { display: none; }
 
 .data-console { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(130px, .7fr) minmax(210px, .95fr); gap: 25px; align-items: center; margin: 22px 0 0; padding: 26px 28px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper-deep); overflow: hidden; box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 5%, transparent); }
 .data-console::after { content: ""; position: absolute; z-index: -1; inset: 0; background: linear-gradient(105deg, transparent 35%, color-mix(in srgb, var(--archive-blue) 5%, transparent)); pointer-events: none; }
@@ -286,6 +287,13 @@
   .responsive-index button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; flex: 0 0 auto; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--paper) 88%, transparent); color: var(--ink-soft); font-size: 11px; font-weight: 600; white-space: nowrap; }
   .responsive-index button span { color: var(--archive-blue); font-size: 9px; font-variant-numeric: tabular-nums; }
   .responsive-index button.is-active { border-color: var(--archive-blue); background: var(--archive-blue-pale); color: var(--archive-blue-deep); }
+  .responsive-index .responsive-tree-trigger { border-style: dashed; color: var(--archive-blue-deep); }
+  .mobile-tree-panel { display: block; margin: 0 -18px 14px; padding: 14px 18px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--paper-deep) 45%, transparent); }
+  .mobile-tree-panel .tree-list { margin-top: 8px; }
+  .mobile-tree-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .mobile-tree-head > div { display: flex; gap: 10px; }
+  .mobile-tree-head button { border: 0; padding: 0; background: transparent; color: var(--ink-soft); font-size: 10px; text-decoration: underline; text-underline-offset: 3px; }
+  .mobile-tree-head button:hover { color: var(--archive-blue); }
   .search-stage { min-height: 310px; margin: 18px 0 28px; }
   .search-stage-content { padding: 34px 28px 25px; }
   .data-console { grid-template-columns: 1fr; gap: 18px; }
@@ -327,6 +335,7 @@
   .archive-sidebar { padding-inline: 14px; }
   .archive-main { padding-inline: 14px; }
   .responsive-index { margin-inline: -14px; padding-inline: 14px; }
+  .mobile-tree-panel { margin-inline: -14px; padding-inline: 14px; }
   .search-stage-content { padding-inline: 18px; }
   .heading-copy h1 { font-size: 33px; }
   .search-tools button { padding-inline: 10px; }

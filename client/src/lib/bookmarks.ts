@@ -45,32 +45,34 @@ export type BookmarkArchive = {
 };
 
 export const iconSources: { value: IconSource; label: string; detail: string }[] = [
-  { value: "google", label: "Google S2", detail: "全球兼容，默认" },
-  { value: "direct", label: "站点直连", detail: "直接请求 /favicon.ico" },
-  { value: "favicon_im", label: "favicon.im", detail: "聚合服务" },
+  { value: "favicon_im", label: "favicon.im", detail: "聚合服务，默认" },
   { value: "favicon_iowen", label: "iowen.cn", detail: "国内聚合" },
-  { value: "favicon_xinac", label: "xinac.net", detail: "聚合服务" },
-  { value: "favicon_vip", label: "favicon.vip", detail: "聚合服务" },
-  { value: "favicon_cravatar", label: "Cravatar", detail: "聚合服务" },
   { value: "favicon_baidu", label: "百度图标", detail: "国内聚合" },
-  { value: "favicon_duckduckgo", label: "DuckDuckGo", detail: "全球聚合" },
-  { value: "favicon_extractor", label: "Favicon Extractor", detail: "聚合服务" },
-  { value: "favicon_pub", label: "FaviconPub", detail: "聚合服务" },
   { value: "favicon_afmax", label: "AFMax", detail: "国内聚合" },
   { value: "favicon_la4", label: "La4", detail: "国内聚合" },
   { value: "favicon_vvhan", label: "Vvhan", detail: "国内聚合" },
+  { value: "favicon_xinac", label: "xinac.net", detail: "聚合服务" },
+  { value: "favicon_vip", label: "favicon.vip", detail: "聚合服务" },
+  { value: "favicon_cravatar", label: "Cravatar", detail: "聚合服务" },
+  { value: "direct", label: "站点直连", detail: "直接请求 /favicon.ico" },
+  { value: "favicon_duckduckgo", label: "DuckDuckGo", detail: "全球聚合" },
+  { value: "favicon_extractor", label: "Favicon Extractor", detail: "聚合服务" },
+  { value: "favicon_pub", label: "FaviconPub", detail: "聚合服务" },
+  { value: "google", label: "Google S2", detail: "海外接口" },
   { value: "logo_surf", label: "文字图标", detail: "本地生成" },
   { value: "iconify", label: "Iconify", detail: "需在数据中指定图标" },
   { value: "custom", label: "自定义", detail: "需在数据中指定图片地址" },
 ];
 
 export const fallbackIconSources: IconSource[] = [
-  "google",
   "favicon_im",
   "favicon_iowen",
   "favicon_baidu",
+  "favicon_afmax",
+  "favicon_la4",
   "favicon_duckduckgo",
   "favicon_vvhan",
+  "google",
   "logo_surf",
 ];
 

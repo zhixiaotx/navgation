@@ -197,7 +197,10 @@ export default function Home() {
       return sampleBookmarks;
     }
   });
-  const [iconSource, setIconSource] = useState<IconSource>(() => (localStorage.getItem("archive-index-icon-source") as IconSource) || "google");
+  const [iconSource, setIconSource] = useState<IconSource>(() => {
+    const stored = localStorage.getItem("archive-index-icon-source") as IconSource | null;
+    return !stored || stored === "google" ? "favicon_im" : stored;
+  });
   const [selectedFolder, setSelectedFolder] = useState(() => firstFolderId(sampleBookmarks));
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set(flattenFolders(sampleBookmarks)));
   const [query, setQuery] = useState("");
@@ -205,6 +208,7 @@ export default function Home() {
   const [showTools, setShowTools] = useState(false);
   const [showTop, setShowTop] = useState(false);
   const [pendingImport, setPendingImport] = useState<BookmarkNode[] | null>(null);
+  const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
 
   const topFolders = useMemo(() => {
@@ -291,6 +295,7 @@ export default function Home() {
     setBookmarks(next);
     setSelectedFolder(firstFolderId(next));
     setExpandedFolders(new Set(flattenFolders(next)));
+    setMobileTreeOpen(true);
     setPendingImport(null);
     toast.success(mode === "replace" ? "书签已覆盖导入" : "书签已增量导入", {
       description: mode === "replace" ? `已按原始层级与顺序建立 ${countBookmarks(next)} 个入口。` : "已合并同名分类，按 URL 去重，并保留原有顺序。",
@@ -374,7 +379,34 @@ export default function Home() {
               {folder.title} <span>{countBookmarks(folder.children)}</span>
             </button>
           ))}
+          <button type="button" className="responsive-tree-trigger" onClick={() => setMobileTreeOpen(open => !open)} aria-expanded={mobileTreeOpen}>
+            目录 {mobileTreeOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
         </nav>
+
+        {mobileTreeOpen && (
+          <section className="mobile-tree-panel" aria-label="完整书签分类目录">
+            <div className="mobile-tree-head">
+              <span className="eyebrow">完整分类目录</span>
+              <div>
+                <button type="button" onClick={expandAllFolders}>展开全部</button>
+                <button type="button" onClick={collapseAllFolders}>收起全部</button>
+              </div>
+            </div>
+            <ul className="tree-list">
+              {topFolders.map(folder => (
+                <FolderTree
+                  key={folder.id}
+                  folder={folder}
+                  selectedId={selectedFolder}
+                  expanded={expandedFolders}
+                  onSelect={id => { selectFolder(id); setMobileTreeOpen(false); }}
+                  onToggle={toggleFolder}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
 
         {showTools && (
           <section className="data-console" aria-label="数据导入导出">

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { countBookmarks, isFolder, mergeBookmarkNodes, parseBrowserBookmarkHtml } from "../client/src/lib/bookmarks.ts";
+import { countBookmarks, iconSources, isFolder, mergeBookmarkNodes, parseBrowserBookmarkHtml } from "../client/src/lib/bookmarks.ts";
 import { createStandaloneNavigation } from "../client/src/lib/standalone.ts";
 
 const browserExport = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
@@ -20,6 +20,9 @@ const browserExport = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 </DL><p>`;
 
 const parsed = parseBrowserBookmarkHtml(browserExport);
+const folderIds = nodes => nodes.flatMap(node => isFolder(node) ? [node.id, ...folderIds(node.children)] : []);
+assert.equal(iconSources[0].value, "favicon_im", "favicon.im 应为默认且位于图标来源首位");
+assert.deepEqual(iconSources.slice(0, 6).map(source => source.value), ["favicon_im", "favicon_iowen", "favicon_baidu", "favicon_afmax", "favicon_la4", "favicon_vvhan"], "国内可用的聚合服务应优先展示");
 assert.equal(parsed.length, 2, "应保留两个顶级分类");
 assert.ok(isFolder(parsed[0]) && parsed[0].title === "工作", "第一个顶级分类应保持原始顺序");
 assert.ok(isFolder(parsed[1]) && parsed[1].title === "阅读", "第二个顶级分类应保持原始顺序");
@@ -28,6 +31,7 @@ assert.equal(parsed[0].children[0].title, "Alpha", "分类内书签应保持原�
 assert.ok(isFolder(parsed[0].children[1]) && parsed[0].children[1].title === "设计", "应重建二级分类");
 assert.equal(parsed[0].children[2].title, "Gamma", "二级分类后的同级书签应保持原始顺序");
 assert.equal(countBookmarks(parsed), 4, "应解析全部链接");
+assert.equal(folderIds(parsed).length, 3, "导入结果应包含全部多级分类，以供左侧树自动展开");
 
 const merged = mergeBookmarkNodes(parsed, parseBrowserBookmarkHtml(`
   <DL><p>
