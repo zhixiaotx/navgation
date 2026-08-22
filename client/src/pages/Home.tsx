@@ -1,25 +1,412 @@
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
-
 /**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Best Practices, Design Guide and Common Pitfalls
+ * 档案索引室设计：固定分类索引脊 + 资料卡式书签，以档案蓝强调检索、定位和打开。
  */
-export default function Home() {
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import {
+  Archive,
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Command,
+  Download,
+  ExternalLink,
+  FileArchive,
+  FileJson2,
+  FileUp,
+  FolderClosed,
+  FolderOpen,
+  Moon,
+  Search,
+  Sun,
+} from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
+import {
+  archiveForExport,
+  BookmarkFolder,
+  BookmarkItem,
+  BookmarkNode,
+  countBookmarks,
+  fallbackIconSources,
+  flattenBookmarks,
+  getFaviconUrl,
+  getHostname,
+  IconSource,
+  iconSources,
+  isFolder,
+  normalizeArchive,
+  parseBrowserBookmarkHtml,
+  sampleBookmarks,
+  toBrowserBookmarkHtml,
+} from "@/lib/bookmarks";
+import { createStandaloneNavigation } from "@/lib/standalone";
+
+const LOGO_URL = "/manus-storage/archive-index-logo_93b1b85b.png";
+
+const searchEngines = [
+  { id: "bing", label: "必应", url: "https://www.bing.com/search?q=" },
+  { id: "google", label: "Google", url: "https://www.google.com/search?q=" },
+  { id: "baidu", label: "百度", url: "https://www.baidu.com/s?wd=" },
+  { id: "sogou", label: "搜狗", url: "https://www.sogou.com/web?query=" },
+  { id: "duckduckgo", label: "DuckDuckGo", url: "https://duckduckgo.com/?q=" },
+  { id: "yandex", label: "Yandex", url: "https://yandex.com/search/?text=" },
+];
+
+function downloadFile(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function firstFolderId(nodes: BookmarkNode[]): string {
+  const first = nodes.find(isFolder);
+  return first?.id ?? "all";
+}
+
+function treeContainsFolder(folder: BookmarkFolder, id: string): boolean {
+  return folder.id === id || folder.children.some(node => isFolder(node) && treeContainsFolder(node, id));
+}
+
+function BookmarkIcon({ item, source }: { item: BookmarkItem; source: IconSource }) {
+  const preferred = item.iconSource ?? source;
+  const attempts = [preferred, ...fallbackIconSources.filter(candidate => candidate !== preferred)];
+  const [attemptIndex, setAttemptIndex] = useState(0);
+  const currentSource = attempts[Math.min(attemptIndex, attempts.length - 1)];
+  const url = getFaviconUrl(item, currentSource);
+
+  useEffect(() => setAttemptIndex(0), [item.id, source]);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
+    <span className="bookmark-icon" aria-hidden="true">
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        onError={() => setAttemptIndex(index => Math.min(index + 1, attempts.length - 1))}
+      />
+    </span>
+  );
+}
+
+function FolderTree({
+  folder,
+  selectedId,
+  expanded,
+  onSelect,
+  onToggle,
+  level = 0,
+}: {
+  folder: BookmarkFolder;
+  selectedId: string;
+  expanded: Set<string>;
+  onSelect: (id: string) => void;
+  onToggle: (id: string) => void;
+  level?: number;
+}) {
+  const isOpen = expanded.has(folder.id);
+  const count = countBookmarks(folder.children);
+  return (
+    <li>
+      <div className={`tree-row ${selectedId === folder.id ? "is-selected" : ""}`} style={{ paddingLeft: `${12 + level * 14}px` }}>
+        <button className="tree-expand" type="button" onClick={() => onToggle(folder.id)} aria-label={isOpen ? `收起 ${folder.title}` : `展开 ${folder.title}`}>
+          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        <button className="tree-select" type="button" onClick={() => onSelect(folder.id)}>
+          {isOpen ? <FolderOpen size={15} /> : <FolderClosed size={15} />}
+          <span>{folder.title}</span>
+          <small>{count}</small>
+        </button>
+      </div>
+      {isOpen && (
+        <ul className="tree-list child-tree">
+          {folder.children.filter(isFolder).map(child => (
+            <FolderTree key={child.id} folder={child} selectedId={selectedId} expanded={expanded} onSelect={onSelect} onToggle={onToggle} level={level + 1} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function BookmarkCard({ item, iconSource, accession }: { item: BookmarkItem; iconSource: IconSource; accession: string }) {
+  return (
+    <a className="bookmark-card" href={item.url} target="_blank" rel="noreferrer">
+      <BookmarkIcon item={item} source={iconSource} />
+      <span className="bookmark-body">
+        <span className="bookmark-title">{item.title}</span>
+        <span className="bookmark-description">{item.description || getHostname(item.url)}</span>
+        <span className="bookmark-catalogue"><span>{getHostname(item.url)}</span><b>{accession}</b></span>
+      </span>
+      <ExternalLink className="bookmark-external" size={15} strokeWidth={1.75} />
+    </a>
+  );
+}
+
+function FolderSection({ folder, iconSource, query }: { folder: BookmarkFolder; iconSource: IconSource; query: string }) {
+  const search = query.trim().toLowerCase();
+  const items = flattenBookmarks(folder.children);
+  const visible = search ? items.filter(item => `${item.title} ${item.url} ${item.description ?? ""} ${item.path.join(" ")}`.toLowerCase().includes(search)) : items;
+
+  if (!visible.length) return null;
+  return (
+    <section className="bookmark-section" id={`section-${folder.id}`}>
+      <header className="section-heading">
+        <span className="section-tab" />
+        <div>
+          <p>分类目录</p>
+          <h2>{folder.title}</h2>
+        </div>
+        <span className="section-count">{visible.length.toString().padStart(2, "0")}</span>
+      </header>
+      <div className="bookmark-grid">
+        {visible.map((item, index) => <BookmarkCard key={item.id} item={item} iconSource={iconSource} accession={`${folder.title.slice(0, 1).toUpperCase()}-${String(index + 1).padStart(2, "0")}`} />)}
+      </div>
+    </section>
+  );
+}
+
+export default function Home() {
+  const { theme, toggleTheme } = useTheme();
+  const [bookmarks, setBookmarks] = useState<BookmarkNode[]>(() => {
+    try {
+      const saved = localStorage.getItem("archive-index-bookmarks");
+      return saved ? normalizeArchive(JSON.parse(saved)) : sampleBookmarks;
+    } catch {
+      return sampleBookmarks;
+    }
+  });
+  const [iconSource, setIconSource] = useState<IconSource>(() => (localStorage.getItem("archive-index-icon-source") as IconSource) || "google");
+  const [selectedFolder, setSelectedFolder] = useState(() => firstFolderId(sampleBookmarks));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set(flattenFolders(sampleBookmarks)));
+  const [query, setQuery] = useState("");
+  const [engine, setEngine] = useState("bing");
+  const [showTools, setShowTools] = useState(false);
+  const [showTop, setShowTop] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+
+  const topFolders = useMemo(() => bookmarks.filter(isFolder), [bookmarks]);
+  const totalBookmarks = useMemo(() => countBookmarks(bookmarks), [bookmarks]);
+  const allItems = useMemo(() => flattenBookmarks(bookmarks), [bookmarks]);
+  const isFiltering = query.trim().length > 0;
+  const activeFolders = useMemo(() => {
+    if (isFiltering || selectedFolder === "all") return topFolders;
+    return topFolders.filter(folder => treeContainsFolder(folder, selectedFolder));
+  }, [isFiltering, selectedFolder, topFolders]);
+  const matchedItems = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return allItems;
+    return allItems.filter(item => `${item.title} ${item.url} ${item.description ?? ""} ${item.path.join(" ")}`.toLowerCase().includes(normalized));
+  }, [allItems, query]);
+
+  useEffect(() => {
+    localStorage.setItem("archive-index-bookmarks", JSON.stringify(bookmarks));
+  }, [bookmarks]);
+
+  useEffect(() => {
+    localStorage.setItem("archive-index-icon-source", iconSource);
+  }, [iconSource]);
+
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 520);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  function toggleFolder(id: string) {
+    setExpandedFolders(previous => {
+      const next = new Set(previous);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function selectFolder(id: string) {
+    setSelectedFolder(id);
+    setQuery("");
+    window.setTimeout(() => document.getElementById(`section-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  function runExternalSearch() {
+    const words = query.trim();
+    if (!words) {
+      toast.message("请先输入搜索词", { description: "输入内容后可使用所选搜索引擎检索全网。" });
+      return;
+    }
+    const selected = searchEngines.find(item => item.id === engine) ?? searchEngines[0];
+    window.open(`${selected.url}${encodeURIComponent(words)}`, "_blank", "noopener,noreferrer");
+  }
+
+  async function importBookmarks(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const content = await file.text();
+      const next = file.name.toLowerCase().endsWith(".json") ? normalizeArchive(JSON.parse(content)) : parseBrowserBookmarkHtml(content);
+      setBookmarks(next);
+      setSelectedFolder(firstFolderId(next));
+      setExpandedFolders(new Set(flattenFolders(next)));
+      toast.success("书签已导入", { description: `已建立 ${countBookmarks(next)} 个入口的分类索引。` });
+    } catch (error) {
+      toast.error("导入未完成", { description: error instanceof Error ? error.message : "无法读取该文件。" });
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function exportJson() {
+    downloadFile("bookmark-archive.json", JSON.stringify(archiveForExport(bookmarks, iconSource), null, 2), "application/json;charset=utf-8");
+    toast.success("已导出 JSON 数据");
+  }
+
+  function exportHtml() {
+    downloadFile("browser-bookmarks.html", toBrowserBookmarkHtml(bookmarks), "text/html;charset=utf-8");
+    toast.success("已导出浏览器书签 HTML");
+  }
+
+  function exportStandalone() {
+    downloadFile("bookmark-navigation.html", createStandaloneNavigation(bookmarks, iconSource), "text/html;charset=utf-8");
+    toast.success("已导出单页导航", { description: "该 HTML 文件可本地双击打开，并保留搜索、分类、主题和数据工具。" });
+  }
+
+  return (
+    <div className="archive-shell">
+      <aside className="archive-sidebar">
+        <div className="brand-lockup">
+          <img src={LOGO_URL} alt="书签导航标记" className="brand-logo" />
+          <div>
+            <strong>书签导航</strong>
+            <span>ARCHIVE INDEX</span>
+          </div>
+        </div>
+
+        <nav className="archive-nav" aria-label="书签分类">
+          <p className="eyebrow">我的索引</p>
+          <button className={`all-bookmarks ${selectedFolder === "all" || isFiltering ? "is-selected" : ""}`} type="button" onClick={() => selectFolder("all")}>
+            <Archive size={16} />
+            <span>全部书签</span>
+            <small>{totalBookmarks}</small>
+          </button>
+          <ul className="tree-list">
+            {topFolders.map(folder => <FolderTree key={folder.id} folder={folder} selectedId={selectedFolder} expanded={expandedFolders} onSelect={selectFolder} onToggle={toggleFolder} />)}
+          </ul>
+        </nav>
+
+        <div className="sidebar-footnote">
+          <span className="archive-rule" />
+          <p>共收录 <strong>{totalBookmarks}</strong> 个常用入口</p>
+          <p>数据仅保存在此浏览器。</p>
+        </div>
+      </aside>
+
+      <main className="archive-main">
+        <header className="topbar">
+          <div className="topbar-intro">
+            <span className="topbar-index">A–01 / 2026</span>
+            <span>个人入口资料馆 · CATALOGUE</span>
+          </div>
+          <div className="topbar-actions">
+            <button className="tool-trigger" type="button" onClick={() => setShowTools(value => !value)} aria-expanded={showTools}>
+              <FileArchive size={16} />
+              <span>数据工具</span>
+              <ChevronDown size={14} className={showTools ? "rotate-180" : ""} />
+            </button>
+            <button className="theme-switch" type="button" onClick={toggleTheme} aria-label="切换日夜模式">
+              {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
+              <span>{theme === "light" ? "夜阅" : "日阅"}</span>
+            </button>
+          </div>
+        </header>
+
+        {showTools && (
+          <section className="data-console" aria-label="数据导入导出">
+            <div className="data-console-copy">
+              <span>ARCHIVE CONTROL</span>
+              <h2>导入、整理，再带着它走。</h2>
+              <p>可读取 Chrome、Edge、Firefox 等浏览器导出的 HTML 书签，也可导入本页导出的 JSON 数据。</p>
+            </div>
+            <div className="intake-stamp" aria-hidden="true"><span>IN</span><i>01</i><small>ARCHIVE</small></div>
+            <div className="data-console-actions">
+              <button className="primary-tool" type="button" onClick={() => importRef.current?.click()}><FileUp size={17} />导入 JSON / HTML</button>
+              <button type="button" onClick={exportJson}><FileJson2 size={17} />导出 JSON</button>
+              <button type="button" onClick={exportHtml}><Download size={17} />导出书签 HTML</button>
+              <button type="button" onClick={exportStandalone}><Archive size={17} />导出单页导航</button>
+            </div>
+          </section>
+        )}
+
+        <section className="search-stage">
+          <div className="search-stage-overlay" />
+          <div className="search-stage-content">
+            <div className="heading-copy">
+              <p className="eyebrow">个人导航台</p>
+              <h1>从这里，回到<br /><em>每一个常用入口。</em></h1>
+            </div>
+            <div className="search-workbench">
+              <div className="search-box">
+                <Search size={20} />
+                <input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => event.key === "Enter" && runExternalSearch()} placeholder="站内查找，或输入关键词检索全网" aria-label="搜索书签或全网" />
+                {query && <span className="match-marker">站内 {matchedItems.length}</span>}
+              </div>
+              <div className="search-tools">
+                <select value={engine} onChange={event => setEngine(event.target.value)} aria-label="选择外部搜索引擎">
+                  {searchEngines.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+                <button type="button" onClick={runExternalSearch}>全网检索 <ExternalLink size={15} /></button>
+              </div>
+            </div>
+            <div className="search-stage-footer">
+              <span><Command size={14} /> 输入即可筛选</span>
+              <span>按 Enter 使用 {searchEngines.find(item => item.id === engine)?.label} 检索</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="content-toolbar">
+          <div>
+            <span className="eyebrow">书签目录</span>
+            <p>{isFiltering ? `“${query}” 的匹配结果` : selectedFolder === "all" ? "全部分类" : "当前分类及其子目录"}</p>
+          </div>
+          <label className="icon-source-select">
+            <span>图标来源</span>
+            <select value={iconSource} onChange={event => setIconSource(event.target.value as IconSource)}>
+              {iconSources.map(source => <option key={source.value} value={source.value}>{source.label} · {source.detail}</option>)}
+            </select>
+          </label>
+        </section>
+
+        <div className="bookmark-collection">
+          {activeFolders.map(folder => <FolderSection key={folder.id} folder={folder} iconSource={iconSource} query={query} />)}
+          {!activeFolders.length || (isFiltering && !matchedItems.length) ? (
+            <section className="empty-archive">
+              <div>
+                <span className="eyebrow">未找到记录</span>
+                <h2>这个索引暂时没有匹配项。</h2>
+                <p>试试更短的关键词，或者直接用上方的全网检索继续寻找。</p>
+              </div>
+              <div className="empty-index-mark" aria-hidden="true"><span>NO</span><span>RECORD</span></div>
+            </section>
+          ) : null}
+        </div>
+
+        <footer className="archive-footer">
+          <p>ARCHIVE INDEX · 本地书签工作台</p>
+          <p><CircleHelp size={14} /> 图标服务可能受网络与站点策略影响，系统会自动尝试备用来源。</p>
+        </footer>
       </main>
+
+      <input ref={importRef} className="sr-only" type="file" accept=".json,.html,.htm,application/json,text/html" onChange={importBookmarks} />
+      <button className={`back-to-top ${showTop ? "is-visible" : ""}`} type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="返回顶部"><ArrowUp size={19} /></button>
     </div>
   );
+}
+
+function flattenFolders(nodes: BookmarkNode[]): string[] {
+  return nodes.flatMap(node => isFolder(node) ? [node.id, ...flattenFolders(node.children)] : []);
 }
