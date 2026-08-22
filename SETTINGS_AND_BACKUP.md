@@ -1,0 +1,53 @@
+# 设置、备份与恢复
+
+本文件承接根目录 [`README.md`](README.md) 的第 7 节，说明顶部 **设置** 面板中的书签管理和备份能力。
+
+## 1. 设置面板
+
+| 页签 | 可执行操作 | 数据影响与保护 |
+| --- | --- | --- |
+| 分类管理 | 创建、重命名、移动、上移、下移、删除分类 | 删除会移除全部子分类和书签；不能移入自身或子分类 |
+| 书签管理 | 创建、编辑、删除、移动、排序、全选、批量移动、批量删除 | 每次操作立即写入当前浏览器 LocalStorage；网址仅接受 HTTP/HTTPS |
+| 备份与恢复 | 下载 JSON/XLSX/CSV、本地恢复、云端备份、云端恢复、恢复默认、一键清除 | 覆盖、清除、恢复默认均要求确认；导出需便利校验 |
+| 外部备份 | 查看坚果云 WebDAV、Cloudflare KV、Cloudflare D1 的变量清单和状态 | 密钥不在网页显示、保存或回传；未配置时不会发送书签 |
+
+书签管理采用检索和“加载更多”列表，避免一次渲染全部默认入口。完整书签条目显示 Logo、名称、分类、URL、描述和管理操作。
+
+## 2. 本地与云端备份
+
+建议先导出本地 JSON，再进行批量删除、清除或恢复默认。JSON 适合作为完整可回滚副本；XLSX/CSV 适合整理和交换。
+
+登录后可点击 **一键云端备份**。系统会将规范化书签树写入受管理对象存储，并在 MySQL `bookmark_backups` 表保存索引。登录状态下，确认导入 JSON、HTML、XLSX 或 CSV 时也会创建云端备份。备份列表最多展示最近 20 项；恢复前建议再次导出本地 JSON。
+
+| 操作 | 保存位置 | 恢复效果 |
+| --- | --- | --- |
+| 本地 JSON/XLSX/CSV 导出 | 用户下载目录 | 用户自行选择文件后导入 |
+| 当前数据云端同步 | 对象存储 + `bookmark_backups` | 登录后可从列表覆盖当前浏览器书签 |
+| 恢复默认 | 项目公开默认 JSON | 替换当前 LocalStorage 数据 |
+| 一键清除 | LocalStorage 空书签树 + 清空标记 | 刷新后保持为空，不自动再载入默认数据 |
+
+## 3. 坚果云与 Cloudflare 外部备份
+
+外部备份只能由全栈服务端发起。浏览器不会保存 WebDAV 密码、Cloudflare API Token 或 D1 代理令牌；页面只返回“已配置”或“待配置”。
+
+| 目标 | 推荐用途 | 服务端写入方式 |
+| --- | --- | --- |
+| 坚果云 WebDAV | 留存带时间戳的长期 JSON 副本 | 写入 `bookmark-navigation/<用户 ID>/` 专用目录 |
+| Cloudflare Workers KV | 保存最新规范化 JSON 快照 | 覆盖固定 `latest.json` 键，适合快速恢复 |
+| Cloudflare D1 | 保存备份历史、索引或元数据 | 仅调用经认证且参数受限的 Worker 代理 |
+
+配置前请打开根目录 [`EXTERNAL_BACKUP_ENVIRONMENT.md`](EXTERNAL_BACKUP_ENVIRONMENT.md)。实际变量应在项目的安全环境变量面板中设置，而不是粘贴进浏览器、默认 JSON 或代码文件。坚果云应使用第三方应用密码；D1 不应直接向浏览器暴露 SQL。[1] [2] [3]
+
+## 4. 安全边界
+
+> 外部服务实际连接验证已按当前使用决定保留到后续步骤。未填写变量时，三个外部备份卡片会安全显示“待配置”，对应写入按钮保持不可用。
+
+不要把密码、Token、代理令牌写入 LocalStorage、普通设置表单、书签 URL、`default-bookmarks.json` 或前端源码。静态托管环境没有 Node 服务端，因此不能安全执行云端或外部备份。
+
+## References
+
+[1] [坚果云帮助：第三方应用授权 WebDAV 开启方法](https://help.jianguoyun.com/?p=2064)
+
+[2] [Cloudflare Docs：Workers KV](https://developers.cloudflare.com/kv/)
+
+[3] [Cloudflare Docs：Build an API to access D1 using a proxy Worker](https://developers.cloudflare.com/d1/tutorials/build-an-api-to-access-d1/)
