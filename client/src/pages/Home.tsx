@@ -156,7 +156,6 @@ function BookmarkCard({ item, iconSource, accession }: { item: BookmarkItem; ico
       <BookmarkIcon item={item} source={iconSource} />
       <span className="bookmark-body">
         <span className="bookmark-title">{item.title}</span>
-        <span className="bookmark-description">{item.description || getHostname(item.url)}</span>
         <span className="bookmark-catalogue"><span>{getHostname(item.url)}</span><b>{accession}</b></span>
       </span>
       <ExternalLink className="bookmark-external" size={15} strokeWidth={1.75} />
