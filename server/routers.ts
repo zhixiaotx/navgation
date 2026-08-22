@@ -6,6 +6,7 @@ import {
   inspectBookmarkJson,
   normalizeBackupFileName,
 } from "./bookmarkBackups";
+import { getExternalBackupStatus, saveExternalBackup } from "./externalBackups";
 import {
   createBookmarkBackup,
   getBookmarkBackupForUser,
@@ -21,6 +22,11 @@ const saveBookmarkBackupInput = z.object({
   fileName: z.string().trim().min(1).max(255),
   content: z.string().min(2).max(5 * 1024 * 1024),
   source: z.enum(["import", "snapshot"]),
+});
+const saveExternalBackupInput = z.object({
+  target: z.enum(["nutstore", "cloudflare_kv", "cloudflare_d1"]),
+  fileName: z.string().trim().min(1).max(255),
+  content: z.string().min(2).max(5 * 1024 * 1024),
 });
 
 export const appRouter = router({
@@ -66,6 +72,18 @@ export const appRouter = router({
         source: backup.source,
         url,
       };
+    }),
+  }),
+  externalBackups: router({
+    status: protectedProcedure.query(() => getExternalBackupStatus()),
+    save: protectedProcedure.input(saveExternalBackupInput).mutation(async ({ ctx, input }) => {
+      const { bookmarkCount } = inspectBookmarkJson(input.content);
+      return saveExternalBackup(input.target, {
+        userId: ctx.user.id,
+        fileName: normalizeBackupFileName(input.fileName),
+        content: input.content,
+        bookmarkCount,
+      });
     }),
   }),
 });

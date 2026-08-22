@@ -6,29 +6,40 @@ import { toast } from "sonner";
 import {
   Archive,
   ArrowUp,
+  BookmarkPlus,
   ChevronDown,
   ChevronRight,
   CircleHelp,
   Cloud,
   Command,
   Download,
+  Eraser,
   ExternalLink,
   FileArchive,
   FileJson2,
   FileSpreadsheet,
   FileUp,
   FolderClosed,
+  FolderPlus,
   FolderOpen,
   LogIn,
+  Move,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
+  Plus,
+  RefreshCcw,
   RotateCcw,
   Search,
+  Settings,
   Sun,
+  Trash2,
+  X,
 } from "lucide-react";
 import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 import {
@@ -52,6 +63,18 @@ import {
   sampleBookmarks,
   toBrowserBookmarkHtml,
 } from "@/lib/bookmarks";
+import {
+  ROOT_FOLDER_ID,
+  createBookmark as createManagedBookmark,
+  createFolder as createManagedFolder,
+  findBookmarkNode,
+  listFolderOptions,
+  moveBookmarkNodes,
+  removeBookmarkNodes,
+  renameBookmarkNode,
+  reorderBookmarkNode,
+  updateBookmark as updateManagedBookmark,
+} from "@/lib/bookmarkManager";
 import { createStandaloneNavigation } from "@/lib/standalone";
 
 const LOGO_URL = "/manus-storage/archive-index-logo_491f7249.png";
@@ -66,6 +89,11 @@ type PendingImport = {
   fileName: string;
   source: "json" | "html" | "spreadsheet";
 };
+
+type SettingsTab = "manage" | "bookmarks" | "backup" | "external";
+type BookmarkDraft = { title: string; url: string; description: string; parentId: string };
+
+const emptyBookmarkDraft = (): BookmarkDraft => ({ title: "", url: "", description: "", parentId: ROOT_FOLDER_ID });
 
 const searchEngines = [
   { id: "bing", label: "必应", region: "全球", url: "https://www.bing.com/search?q=" },
@@ -274,6 +302,18 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [engine, setEngine] = useState("bing");
   const [showTools, setShowTools] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("manage");
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [newFolderTitle, setNewFolderTitle] = useState("");
+  const [newFolderParentId, setNewFolderParentId] = useState(ROOT_FOLDER_ID);
+  const [renameFolderTitle, setRenameFolderTitle] = useState("");
+  const [folderMoveTarget, setFolderMoveTarget] = useState(ROOT_FOLDER_ID);
+  const [bookmarkDraft, setBookmarkDraft] = useState<BookmarkDraft>(emptyBookmarkDraft);
+  const [editingBookmarkId, setEditingBookmarkId] = useState<string | null>(null);
+  const [selectedBookmarkIds, setSelectedBookmarkIds] = useState<Set<string>>(new Set());
+  const [batchMoveTarget, setBatchMoveTarget] = useState(ROOT_FOLDER_ID);
+  const [bookmarkManagerQuery, setBookmarkManagerQuery] = useState("");
+  const [bookmarkManagerLimit, setBookmarkManagerLimit] = useState(240);
   const [showTop, setShowTop] = useState(false);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [pendingExport, setPendingExport] = useState<ExportKind | null>(null);
@@ -282,6 +322,7 @@ export default function Home() {
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const cloudBackups = trpc.bookmarkBackups.list.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
@@ -297,6 +338,15 @@ export default function Home() {
     },
   });
   const accessCloudBackup = trpc.bookmarkBackups.access.useMutation();
+  const externalBackupStatus = trpc.externalBackups.status.useQuery(undefined, {
+    enabled: isAuthenticated,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const saveExternalBackup = trpc.externalBackups.save.useMutation({
+    onSuccess: result => toast.success("已创建外部备份", { description: `备份目标：${result.target} · ${result.location}` }),
+    onError: error => toast.error("外部备份未完成", { description: error.message }),
+  });
 
   const topFolders = useMemo(() => {
     const rootBookmarks = bookmarks.filter(node => !isFolder(node));
@@ -307,6 +357,14 @@ export default function Home() {
   const allItems = useMemo(() => flattenBookmarks(bookmarks), [bookmarks]);
   const isFiltering = query.trim().length > 0;
   const activeFolders = topFolders;
+  const folderOptions = useMemo(() => listFolderOptions(bookmarks), [bookmarks]);
+  const manageableBookmarks = useMemo(() => flattenBookmarks(bookmarks), [bookmarks]);
+  const filteredManageableBookmarks = useMemo(() => {
+    const normalized = bookmarkManagerQuery.trim().toLowerCase();
+    if (!normalized) return manageableBookmarks;
+    return manageableBookmarks.filter(item => `${item.title} ${item.url} ${item.description ?? ""} ${item.path.join(" ")}`.toLowerCase().includes(normalized));
+  }, [bookmarkManagerQuery, manageableBookmarks]);
+  const visibleManageableBookmarks = useMemo(() => filteredManageableBookmarks.slice(0, bookmarkManagerLimit), [bookmarkManagerLimit, filteredManageableBookmarks]);
   const matchedItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return allItems;
@@ -326,17 +384,19 @@ export default function Home() {
     async function loadDefaultBookmarks() {
       let saved: BookmarkNode[] | null = null;
       let storedVersion: string | null = null;
+      let explicitlyCleared = false;
 
       try {
         const raw = localStorage.getItem("archive-index-bookmarks");
         saved = raw ? normalizeArchive(JSON.parse(raw)) : null;
         storedVersion = localStorage.getItem("archive-index-default-version");
+        explicitlyCleared = localStorage.getItem("archive-index-cleared") === "true";
       } catch {
         saved = null;
       }
 
       const isLegacySample = Boolean(saved && countBookmarks(saved) === countBookmarks(sampleBookmarks));
-      const shouldApplyDefault = !saved || saved.length === 0 || (!storedVersion && isLegacySample);
+      const shouldApplyDefault = !saved || (!explicitlyCleared && saved.length === 0) || (!storedVersion && isLegacySample);
 
       if (!shouldApplyDefault) {
         if (saved) applyArchive(saved);
@@ -403,6 +463,137 @@ export default function Home() {
     setExpandedFolders(new Set());
   }
 
+  function applyManagedTree(next: BookmarkNode[], success: string) {
+    setBookmarks(next);
+    setSelectedFolder(firstFolderId(next));
+    setExpandedFolders(new Set(flattenFolders(next)));
+    if (next.length) localStorage.removeItem("archive-index-cleared");
+    toast.success(success);
+  }
+
+  function handleCreateFolder() {
+    try {
+      const next = createManagedFolder(bookmarks, newFolderTitle, newFolderParentId);
+      applyManagedTree(next, "已创建分类");
+      setNewFolderTitle("");
+    } catch (error) {
+      toast.error("无法创建分类", { description: error instanceof Error ? error.message : "请检查分类信息。" });
+    }
+  }
+
+  function selectManagedFolder(id: string) {
+    const folder = findBookmarkNode(bookmarks, id);
+    if (!folder || !isFolder(folder)) return;
+    setActiveFolderId(id);
+    setRenameFolderTitle(folder.title);
+    setFolderMoveTarget(ROOT_FOLDER_ID);
+  }
+
+  function handleRenameFolder() {
+    if (!activeFolderId) return;
+    try {
+      applyManagedTree(renameBookmarkNode(bookmarks, activeFolderId, renameFolderTitle), "已重命名分类");
+    } catch (error) {
+      toast.error("无法重命名分类", { description: error instanceof Error ? error.message : "请检查名称。" });
+    }
+  }
+
+  function handleRemoveFolder() {
+    if (!activeFolderId) return;
+    const folder = findBookmarkNode(bookmarks, activeFolderId);
+    if (!folder || !isFolder(folder)) return;
+    if (!window.confirm(`删除“${folder.title}”及其全部子分类和书签？此操作不能撤销。`)) return;
+    applyManagedTree(removeBookmarkNodes(bookmarks, [activeFolderId]), "已删除分类及其中内容");
+    setActiveFolderId(null);
+    setRenameFolderTitle("");
+  }
+
+  function handleMoveFolder(targetId: string) {
+    if (!activeFolderId) return;
+    try {
+      applyManagedTree(moveBookmarkNodes(bookmarks, [activeFolderId], targetId), "已移动分类");
+    } catch (error) {
+      toast.error("无法移动分类", { description: error instanceof Error ? error.message : "请检查目标分类。" });
+    }
+  }
+
+  function handleCreateOrUpdateBookmark() {
+    try {
+      if (editingBookmarkId) {
+        const updated = updateManagedBookmark(bookmarks, editingBookmarkId, bookmarkDraft);
+        const moved = moveBookmarkNodes(updated, [editingBookmarkId], bookmarkDraft.parentId);
+        applyManagedTree(moved, "已保存书签修改");
+      } else {
+        applyManagedTree(createManagedBookmark(bookmarks, bookmarkDraft, bookmarkDraft.parentId), "已创建书签");
+      }
+      setBookmarkDraft(emptyBookmarkDraft());
+      setEditingBookmarkId(null);
+    } catch (error) {
+      toast.error("无法保存书签", { description: error instanceof Error ? error.message : "请检查书签信息。" });
+    }
+  }
+
+  function beginEditBookmark(id: string) {
+    const item = findBookmarkNode(bookmarks, id);
+    if (!item || isFolder(item)) return;
+    const path = manageableBookmarks.find(bookmark => bookmark.id === id)?.path ?? [];
+    const parent = folderOptions.find(option => option.path === path.join(" / "))?.id ?? ROOT_FOLDER_ID;
+    setEditingBookmarkId(id);
+    setBookmarkDraft({ title: item.title, url: item.url, description: item.description ?? "", parentId: parent });
+  }
+
+  function toggleSelectedBookmark(id: string) {
+    setSelectedBookmarkIds(previous => {
+      const next = new Set(previous);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleBatchDelete() {
+    if (!selectedBookmarkIds.size) return;
+    if (!window.confirm(`删除所选 ${selectedBookmarkIds.size} 个书签？此操作不能撤销。`)) return;
+    applyManagedTree(removeBookmarkNodes(bookmarks, selectedBookmarkIds), `已删除 ${selectedBookmarkIds.size} 个书签`);
+    setSelectedBookmarkIds(new Set());
+  }
+
+  function handleBatchMove() {
+    if (!selectedBookmarkIds.size) return;
+    try {
+      applyManagedTree(moveBookmarkNodes(bookmarks, selectedBookmarkIds, batchMoveTarget), `已移动 ${selectedBookmarkIds.size} 个书签`);
+      setSelectedBookmarkIds(new Set());
+    } catch (error) {
+      toast.error("无法批量移动书签", { description: error instanceof Error ? error.message : "请检查目标分类。" });
+    }
+  }
+
+  async function restoreFactoryDefaults() {
+    if (!window.confirm("恢复出厂默认数据会覆盖当前浏览器中的全部书签。是否继续？")) return;
+    try {
+      const response = await fetch(DEFAULT_BOOKMARKS_URL);
+      if (!response.ok) throw new Error("默认数据读取失败。");
+      const payload = await response.json();
+      applyManagedTree(normalizeArchive(payload.bookmarks ?? payload), "已恢复默认书签数据");
+      localStorage.setItem("archive-index-default-version", DEFAULT_DATA_VERSION);
+    } catch (error) {
+      toast.error("恢复默认数据失败", { description: error instanceof Error ? error.message : "请稍后重试。" });
+    }
+  }
+
+  function clearAllBookmarks() {
+    if (!window.confirm("清除会删除当前浏览器中的所有书签。你可先创建本地或云端备份。是否继续？")) return;
+    localStorage.setItem("archive-index-cleared", "true");
+    applyManagedTree([], "已清除当前浏览器书签");
+    setSelectedBookmarkIds(new Set());
+  }
+
+  function explainExternalBackup(provider: "nutstore" | "cloudflare") {
+    const description = provider === "nutstore"
+      ? "坚果云备份需要 WebDAV 地址、账户和应用密码；配置后将由服务端写入专用备份目录。"
+      : "Cloudflare 备份需要账户 ID、API 令牌及 KV 命名空间或 D1 数据库 ID；配置后由服务端执行加密连接。";
+    toast.message("外部备份尚未连接", { description });
+  }
+
   function runExternalSearch() {
     const words = query.trim();
     if (!words) {
@@ -464,6 +655,25 @@ export default function Home() {
       fileName: `bookmark-snapshot-${stamp}.json`,
       content: JSON.stringify(archiveForExport(bookmarks, iconSource), null, 2),
       source: "snapshot",
+    });
+  }
+
+  async function syncExternalBackup(target: "nutstore" | "cloudflare_kv" | "cloudflare_d1") {
+    if (!isAuthenticated) {
+      startLogin();
+      return;
+    }
+    const status = externalBackupStatus.data;
+    const enabled = target === "nutstore" ? status?.nutstore : target === "cloudflare_kv" ? status?.cloudflareKv : status?.cloudflareD1;
+    if (!enabled) {
+      toast.message("尚未完成安全配置", { description: "请在项目管理面板的密钥设置中保存对应服务的凭据。密钥不会存入浏览器，也不会在此页面回显。" });
+      return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    await saveExternalBackup.mutateAsync({
+      target,
+      fileName: `bookmark-external-${stamp}.json`,
+      content: JSON.stringify(archiveForExport(bookmarks, iconSource), null, 2),
     });
   }
 
@@ -583,10 +793,10 @@ export default function Home() {
             <span>个人入口资料馆 · CATALOGUE</span>
           </div>
           <div className="topbar-actions">
-            <button className="tool-trigger" type="button" onClick={() => setShowTools(value => !value)} aria-expanded={showTools}>
-              <FileArchive size={16} />
-              <span>数据工具</span>
-              <ChevronDown size={14} className={showTools ? "rotate-180" : ""} />
+            <button ref={settingsTriggerRef} className="tool-trigger" type="button" onClick={() => setShowTools(true)} aria-haspopup="dialog">
+              <Settings size={16} />
+              <span>设置</span>
+              <ChevronDown size={14} />
             </button>
             <button className="theme-switch" type="button" onClick={toggleTheme} aria-label="切换日夜模式">
               {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
@@ -633,51 +843,110 @@ export default function Home() {
           </section>
         )}
 
-        {showTools && (
-          <section className="data-console" aria-label="数据导入导出">
-            <div className="data-console-copy">
-              <span>ARCHIVE CONTROL</span>
-              <h2>导入、整理，再带着它走。</h2>
-              <p>可读取 Chrome、Edge、Firefox 等浏览器导出的 HTML 书签，也可导入本页导出的 JSON、XLSX 或 CSV。表格中的“分类路径”会自动还原为多级目录。登录后，导入结果会保存为你的私有 JSON 云端备份。</p>
-            </div>
-            <div className="intake-stamp" aria-hidden="true"><span>IN</span><i>01</i><small>ARCHIVE</small></div>
-            <div className="data-console-actions">
-              <button className="primary-tool" type="button" onClick={() => importRef.current?.click()}><FileUp size={17} />导入 JSON / HTML / XLSX / CSV</button>
-              <button type="button" onClick={() => requestExport("json")}><FileJson2 size={17} />导出 JSON</button>
-              <button type="button" onClick={() => requestExport("html")}><Download size={17} />导出书签 HTML</button>
-              <button type="button" onClick={() => requestExport("xlsx")}><FileSpreadsheet size={17} />导出 XLSX</button>
-              <button type="button" onClick={() => requestExport("csv")}><FileSpreadsheet size={17} />导出 CSV</button>
-              <button type="button" onClick={() => requestExport("standalone")}><Archive size={17} />导出单页导航</button>
-            </div>
-            <section className="cloud-backup-panel" aria-label="云端书签备份">
-              <div className="cloud-backup-copy">
-                <span><Cloud size={16} /> 云端备份</span>
-                <p>{isAuthenticated ? `已登录为 ${user?.name || "当前用户"}。导入的书签数据会自动规范化并保存；也可同步本浏览器当前数据。` : "登录后可将导入的书签数据和当前浏览器书签保存为私有云端备份。"}</p>
-              </div>
-              {isAuthenticated ? (
-                <div className="cloud-backup-controls">
-                  <button type="button" className="cloud-sync-button" onClick={syncCurrentBookmarks} disabled={saveCloudBackup.isPending || !archiveReady}>
-                    <Cloud size={16} />{saveCloudBackup.isPending ? "正在同步…" : "同步当前数据"}
-                  </button>
-                  <div className="cloud-backup-list" aria-live="polite">
-                    {cloudBackups.isLoading ? <p>正在读取云端备份…</p> : cloudBackups.data?.length ? (
-                      <ul>
-                        {cloudBackups.data.map(backup => (
-                          <li key={backup.id}>
-                            <div><strong>{backup.fileName}</strong><span>{backup.bookmarkCount} 个入口 · {new Date(backup.createdAt).toLocaleString("zh-CN")}</span></div>
-                            <button type="button" onClick={() => restoreCloudBackup(backup.id)} disabled={accessCloudBackup.isPending}><RotateCcw size={14} />恢复</button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : <p>暂无云端备份。同步或导入 JSON 后会显示在这里。</p>}
-                  </div>
+        <Dialog open={showTools} onOpenChange={setShowTools}>
+          <DialogContent className="settings-modal max-w-none gap-0 p-0" showCloseButton={false} onCloseAutoFocus={event => {
+            event.preventDefault();
+            settingsTriggerRef.current?.focus();
+          }}>
+            <section>
+              <header className="settings-modal-head">
+                <div>
+                  <span className="eyebrow">ARCHIVE SETTINGS</span>
+                  <DialogTitle className="settings-dialog-title">管理你的导航资料馆</DialogTitle>
+                  <DialogDescription className="settings-dialog-description">分类、书签、备份与恢复操作都会立即写入当前浏览器；登录后可同步为私有云端备份。</DialogDescription>
                 </div>
-              ) : (
-                <button type="button" className="cloud-login-button" onClick={startLogin} disabled={authLoading}><LogIn size={16} />{authLoading ? "正在检查登录状态…" : "登录以启用云端备份"}</button>
-              )}
+                <DialogClose asChild><button className="settings-close" type="button" aria-label="关闭设置"><X size={20} /></button></DialogClose>
+              </header>
+
+              <nav className="settings-tabs" aria-label="设置分类">
+                <button type="button" className={settingsTab === "manage" ? "is-active" : ""} onClick={() => setSettingsTab("manage")}><FolderPlus size={15} />分类管理</button>
+                <button type="button" className={settingsTab === "bookmarks" ? "is-active" : ""} onClick={() => setSettingsTab("bookmarks")}><BookmarkPlus size={15} />书签管理</button>
+                <button type="button" className={settingsTab === "backup" ? "is-active" : ""} onClick={() => setSettingsTab("backup")}><Cloud size={15} />备份与恢复</button>
+                <button type="button" className={settingsTab === "external" ? "is-active" : ""} onClick={() => setSettingsTab("external")}><Settings size={15} />外部备份</button>
+              </nav>
+
+              <div className="settings-modal-body">
+                {settingsTab === "manage" && (
+                  <section className="settings-panel" aria-label="分类管理">
+                    <div className="settings-panel-copy"><span>CATALOGUE</span><h3>分类结构</h3><p>创建、重命名、移动、排序或删除分类。删除分类会同时删除其下的全部书签。</p></div>
+                    <div className="settings-grid two-columns">
+                      <article className="settings-card">
+                        <h4>新建分类</h4>
+                        <label>分类名称<input value={newFolderTitle} onChange={event => setNewFolderTitle(event.target.value)} placeholder="例如：设计灵感" /></label>
+                        <label>放入位置<select value={newFolderParentId} onChange={event => setNewFolderParentId(event.target.value)}><option value={ROOT_FOLDER_ID}>顶层分类</option>{folderOptions.map(folder => <option key={folder.id} value={folder.id}>{"　".repeat(folder.depth)}{folder.path}</option>)}</select></label>
+                        <button className="settings-primary" type="button" onClick={handleCreateFolder}><Plus size={15} />创建分类</button>
+                      </article>
+                      <article className="settings-card folder-editor">
+                        <h4>编辑现有分类</h4>
+                        <div className="folder-option-list">
+                          {folderOptions.map(folder => <button key={folder.id} type="button" className={activeFolderId === folder.id ? "is-selected" : ""} onClick={() => selectManagedFolder(folder.id)}>{"　".repeat(folder.depth)}{folder.title}</button>)}
+                        </div>
+                        {activeFolderId ? <>
+                          <label>分类名称<input value={renameFolderTitle} onChange={event => setRenameFolderTitle(event.target.value)} /></label>
+                          <div className="inline-actions"><button type="button" onClick={handleRenameFolder}><Pencil size={14} />重命名</button><button type="button" className="danger-button" onClick={handleRemoveFolder}><Trash2 size={14} />删除</button></div>
+                          <label>移动至<select value={folderMoveTarget} onChange={event => setFolderMoveTarget(event.target.value)}><option value={ROOT_FOLDER_ID}>顶层分类</option>{folderOptions.filter(folder => folder.id !== activeFolderId).map(folder => <option key={folder.id} value={folder.id}>{folder.path}</option>)}</select></label>
+                          <div className="inline-actions"><button type="button" onClick={() => handleMoveFolder(folderMoveTarget)}><Move size={14} />移动</button><button type="button" onClick={() => applyManagedTree(reorderBookmarkNode(bookmarks, activeFolderId, -1), "已上移分类")}>上移</button><button type="button" onClick={() => applyManagedTree(reorderBookmarkNode(bookmarks, activeFolderId, 1), "已下移分类")}>下移</button></div>
+                        </> : <p className="settings-hint">从左侧目录选择一个分类后可进行编辑。</p>}
+                      </article>
+                    </div>
+                  </section>
+                )}
+
+                {settingsTab === "bookmarks" && (
+                  <section className="settings-panel" aria-label="书签管理">
+                    <div className="settings-panel-copy"><span>HOLDINGS</span><h3>书签与批量处理</h3><p>新建、编辑、删除、移动和排序书签；勾选多条记录即可批量处理。</p></div>
+                    <div className="settings-grid bookmark-layout">
+                      <article className="settings-card bookmark-form-card">
+                        <h4>{editingBookmarkId ? "编辑书签" : "新建书签"}</h4>
+                        <label>名称<input value={bookmarkDraft.title} onChange={event => setBookmarkDraft(previous => ({ ...previous, title: event.target.value }))} placeholder="书签名称" /></label>
+                        <label>网址<input value={bookmarkDraft.url} onChange={event => setBookmarkDraft(previous => ({ ...previous, url: event.target.value }))} placeholder="https://example.com" /></label>
+                        <label>说明（可选）<textarea value={bookmarkDraft.description} onChange={event => setBookmarkDraft(previous => ({ ...previous, description: event.target.value }))} placeholder="仅用于导出与后续维护" /></label>
+                        <label>所属分类<select value={bookmarkDraft.parentId} onChange={event => setBookmarkDraft(previous => ({ ...previous, parentId: event.target.value }))}><option value={ROOT_FOLDER_ID}>未分类（顶层）</option>{folderOptions.map(folder => <option key={folder.id} value={folder.id}>{folder.path}</option>)}</select></label>
+                        <div className="inline-actions"><button className="settings-primary" type="button" onClick={handleCreateOrUpdateBookmark}>{editingBookmarkId ? <Pencil size={15} /> : <Plus size={15} />}{editingBookmarkId ? "保存修改" : "创建书签"}</button>{editingBookmarkId && <button type="button" onClick={() => { setEditingBookmarkId(null); setBookmarkDraft(emptyBookmarkDraft()); }}>取消编辑</button>}</div>
+                      </article>
+                      <article className="settings-card bookmark-list-card">
+                        <div className="bookmark-list-head"><h4>全部书签 <span>{manageableBookmarks.length}</span></h4><div><button type="button" onClick={() => setSelectedBookmarkIds(new Set(filteredManageableBookmarks.map(item => item.id)))}>全选结果</button><button type="button" onClick={() => setSelectedBookmarkIds(new Set())}>清空选择</button></div></div>
+                        <input className="bookmark-manager-search" value={bookmarkManagerQuery} onChange={event => { setBookmarkManagerQuery(event.target.value); setBookmarkManagerLimit(240); }} placeholder="检索名称、网址、说明或分类路径" aria-label="检索待管理书签" />
+                        {filteredManageableBookmarks.length > visibleManageableBookmarks.length && <p className="manager-list-note">当前显示 {visibleManageableBookmarks.length} / {filteredManageableBookmarks.length} 条。可检索全部书签，或继续加载更多。</p>}
+                        {selectedBookmarkIds.size > 0 && <div className="batch-bar"><strong>已选 {selectedBookmarkIds.size} 条</strong><select value={batchMoveTarget} onChange={event => setBatchMoveTarget(event.target.value)}><option value={ROOT_FOLDER_ID}>移至未分类</option>{folderOptions.map(folder => <option key={folder.id} value={folder.id}>{folder.path}</option>)}</select><button type="button" onClick={handleBatchMove}><Move size={14} />批量移动</button><button className="danger-button" type="button" onClick={handleBatchDelete}><Trash2 size={14} />批量删除</button></div>}
+                        <div className="bookmark-manager-list">
+                          {visibleManageableBookmarks.map(item => <div className="bookmark-manager-row" key={item.id}>
+                            <label className="row-check"><input type="checkbox" checked={selectedBookmarkIds.has(item.id)} onChange={() => toggleSelectedBookmark(item.id)} aria-label={`选择 ${item.title}`} /></label>
+                            <div><strong>{item.title}</strong><span>{item.path.join(" / ") || "未分类"} · {item.url}</span></div>
+                            <div className="row-actions"><button type="button" onClick={() => beginEditBookmark(item.id)} aria-label={`编辑 ${item.title}`}><Pencil size={14} /></button><button type="button" onClick={() => applyManagedTree(reorderBookmarkNode(bookmarks, item.id, -1), "已上移书签")} aria-label={`上移 ${item.title}`}>↑</button><button type="button" onClick={() => applyManagedTree(reorderBookmarkNode(bookmarks, item.id, 1), "已下移书签")} aria-label={`下移 ${item.title}`}>↓</button><button className="danger-icon" type="button" onClick={() => { if (window.confirm(`删除“${item.title}”？`)) applyManagedTree(removeBookmarkNodes(bookmarks, [item.id]), "已删除书签"); }} aria-label={`删除 ${item.title}`}><Trash2 size={14} /></button></div>
+                          </div>)}
+                        </div>
+                        {visibleManageableBookmarks.length < filteredManageableBookmarks.length && <button className="load-more-bookmarks" type="button" onClick={() => setBookmarkManagerLimit(limit => Math.min(limit + 240, filteredManageableBookmarks.length))}>加载更多书签（+{Math.min(240, filteredManageableBookmarks.length - visibleManageableBookmarks.length)}）</button>}
+                      </article>
+                    </div>
+                  </section>
+                )}
+
+                {settingsTab === "backup" && (
+                  <section className="settings-panel" aria-label="备份与恢复">
+                    <div className="settings-panel-copy"><span>BACKUP / RESTORE</span><h3>一键备份与恢复</h3><p>本地备份会下载 JSON 文件；受管理云端备份仅对登录用户私有可见。导出操作仍需管理员验证。</p></div>
+                    <div className="settings-grid backup-grid">
+                      <article className="settings-card"><h4>本地备份与导入</h4><div className="stack-actions"><button className="settings-primary" type="button" onClick={() => requestExport("json")}><FileJson2 size={15} />下载本地 JSON 备份</button><button type="button" onClick={() => importRef.current?.click()}><FileUp size={15} />从本地文件恢复</button><button type="button" onClick={() => requestExport("xlsx")}><FileSpreadsheet size={15} />导出 XLSX</button><button type="button" onClick={() => requestExport("csv")}><FileSpreadsheet size={15} />导出 CSV</button></div></article>
+                      <article className="settings-card"><h4>受管理云端备份</h4>{isAuthenticated ? <><div className="inline-actions"><button className="settings-primary" type="button" onClick={syncCurrentBookmarks} disabled={saveCloudBackup.isPending || !archiveReady}><Cloud size={15} />{saveCloudBackup.isPending ? "正在备份…" : "一键云端备份"}</button>{cloudBackups.data?.[0] && <button type="button" onClick={() => restoreCloudBackup(cloudBackups.data![0].id)} disabled={accessCloudBackup.isPending}><RotateCcw size={15} />恢复最新备份</button>}</div><div className="cloud-backup-list" aria-live="polite">{cloudBackups.isLoading ? <p>正在读取云端备份…</p> : cloudBackups.data?.length ? <ul>{cloudBackups.data.map(backup => <li key={backup.id}><div><strong>{backup.fileName}</strong><span>{backup.bookmarkCount} 个入口 · {new Date(backup.createdAt).toLocaleString("zh-CN")}</span></div><button type="button" onClick={() => restoreCloudBackup(backup.id)} disabled={accessCloudBackup.isPending}><RotateCcw size={14} />恢复</button></li>)}</ul> : <p>暂无云端备份。</p>}</div></> : <button className="settings-primary" type="button" onClick={startLogin} disabled={authLoading}><LogIn size={15} />登录以启用云端备份</button>}</article>
+                      <article className="settings-card danger-card"><h4>数据维护</h4><p>以下操作会修改当前浏览器中的书签数据，执行前请先创建本地或云端备份。</p><div className="stack-actions"><button type="button" onClick={restoreFactoryDefaults}><RefreshCcw size={15} />恢复出厂默认数据</button><button className="danger-button" type="button" onClick={clearAllBookmarks}><Eraser size={15} />一键清除当前数据</button></div></article>
+                    </div>
+                  </section>
+                )}
+
+                {settingsTab === "external" && (
+                  <section className="settings-panel" aria-label="外部备份">
+                    <div className="settings-panel-copy"><span>EXTERNAL VAULTS</span><h3>外部备份连接</h3><p>外部备份的密钥通过项目安全密钥面板保存，不会写入浏览器、LocalStorage 或此设置表单。此页只显示是否已配置，并允许登录用户触发服务端备份。</p></div>
+                    <div className="settings-grid two-columns">
+                      <article className="settings-card external-card"><span className={`connection-status ${externalBackupStatus.data?.nutstore ? "is-connected" : ""}`}>{externalBackupStatus.data?.nutstore ? "已配置" : "待配置"}</span><h4>坚果云 WebDAV</h4><p>使用 WebDAV 将规范化 JSON 写入 `bookmark-navigation/` 专用目录。请在项目安全密钥面板配置地址、账号与第三方应用密码。</p><div className="stack-actions">{isAuthenticated ? <button className="settings-primary" type="button" onClick={() => syncExternalBackup("nutstore")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.nutstore}><Cloud size={15} />{saveExternalBackup.isPending ? "正在备份…" : "备份到坚果云"}</button> : <button className="settings-primary" type="button" onClick={startLogin}><LogIn size={15} />登录后备份</button>}<button type="button" onClick={() => explainExternalBackup("nutstore")}>安全密钥配置说明</button></div></article>
+                      <article className="settings-card external-card"><span className={`connection-status ${externalBackupStatus.data?.cloudflareKv || externalBackupStatus.data?.cloudflareD1 ? "is-connected" : ""}`}>{externalBackupStatus.data?.cloudflareKv || externalBackupStatus.data?.cloudflareD1 ? "已配置" : "待配置"}</span><h4>Cloudflare KV / D1</h4><p>KV 保存最新 JSON 快照；D1 通过受认证 Worker 代理写入历史元数据。请在项目安全密钥面板配置相应资源标识和令牌。</p><div className="stack-actions">{isAuthenticated ? <><button className="settings-primary" type="button" onClick={() => syncExternalBackup("cloudflare_kv")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.cloudflareKv}><Cloud size={15} />备份到 Cloudflare KV</button><button type="button" onClick={() => syncExternalBackup("cloudflare_d1")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.cloudflareD1}><Cloud size={15} />写入 Cloudflare D1</button></> : <button className="settings-primary" type="button" onClick={startLogin}><LogIn size={15} />登录后备份</button>}<button type="button" onClick={() => explainExternalBackup("cloudflare")}>安全密钥配置说明</button></div></article>
+                    </div>
+                    <p className="settings-hint">配置入口：在项目管理面板的安全密钥区域填写对应变量。密钥字段会以遮罩形式管理，当前页面不显示、保存或回传任何密钥值。仅配置了所需变量的备份按钮才会启用。</p>
+                  </section>
+                )}
+              </div>
             </section>
-          </section>
-        )}
+          </DialogContent>
+        </Dialog>
 
         <section className="search-stage">
           <div className="search-stage-overlay" />

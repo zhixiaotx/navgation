@@ -21,7 +21,11 @@
 | 导出 | JSON、浏览器书签 HTML、XLSX、CSV、离线单页导航；均要求 `admin / 123456` | `Home.tsx`、`standalone.ts` |
 | 主题与辅助 | 日夜模式、右下角一键置顶、键盘 Enter 站外搜索 | `ThemeContext.tsx`、`Home.tsx` |
 | 响应式体验 | 桌面侧栏、平板多列、手机横向索引与完整目录入口、单列触控卡片 | `client/src/index.css` |
-| 云端备份 | 登录后自动备份导入的 JSON，或将当前 LocalStorage 一键同步、恢复 | `server/routers.ts`、`server/storage.ts` |
+| 设置管理面板 | 顶部“设置”集中管理分类、书签、批量处理、本地导入导出和备份恢复 | `Home.tsx`、`index.css` |
+| 分类管理 | 创建、重命名、删除、移动、上移与下移分类；递归保护避免移入自身或子分类 | `bookmarkManager.ts` |
+| 书签管理 | 创建、编辑、删除、移动、上移/下移及多选批量移动、批量删除 | `bookmarkManager.ts`、`Home.tsx` |
+| 本地与云端恢复 | JSON/XLSX/CSV 本地备份；登录后自动备份导入结果、手动同步、列表恢复、清除与恢复默认数据 | `Home.tsx`、`server/routers.ts`、`server/storage.ts` |
+| 外部备份评估 | 设置面板展示坚果云 WebDAV、Cloudflare KV/D1 的安全接入前提；未配置凭据时不会发送数据 | `external-backup-research.md` |
 
 ## 2. 数据到底保存在哪里
 
@@ -32,6 +36,7 @@
 | 默认书签目录 | `client/public/data/default-bookmarks.json` | **公开**，会随静态站点发布 | 新访问者首次打开时由 `./data/default-bookmarks.json` 读取 |
 | 当前浏览器书签 | LocalStorage：`archive-index-bookmarks` | 仅当前浏览器可见 | 导入、恢复、编辑后立即写入；优先于默认目录 |
 | 默认数据版本记录 | LocalStorage：`archive-index-default-version` | 仅当前浏览器可见 | 控制旧示例数据迁移与默认目录初始化 |
+| 主动清空标记 | LocalStorage：`archive-index-cleared` | 仅当前浏览器可见 | 用户执行“一键清除”后保留空目录，刷新时不再自动灌入默认数据 |
 | 用户 JSON 备份文件 | 受管理对象存储：`bookmark-backups/<用户 ID>/…` | 通过所属用户的后端接口访问 | 登录后导入 JSON 自动保存，或手动同步当前数据 |
 | 备份元数据 | MySQL：`bookmark_backups` 表 | 非公开 | 记录用户、对象键、文件名、大小、书签数量、来源与时间 |
 
@@ -73,6 +78,8 @@ pnpm start
 | `client/src/pages/Home.tsx` | 主页面：分类树、搜索、导入导出、默认数据、云端备份 UI | 调整绝大多数页面功能 |
 | `client/src/index.css` | 档案风格视觉系统、卡片、侧栏、移动端断点 | 改颜色、尺寸、布局、触控体验 |
 | `client/src/lib/bookmarks.ts` | 书签类型、JSON 规范化、HTML、XLSX、CSV 解析、图标 URL、合并和多格式导出 | 改数据格式、图标服务、导入规则 |
+| `client/src/lib/bookmarkManager.ts` | 不可变书签树操作：分类与书签的新建、编辑、删除、移动、排序和批量处理 | 修改管理面板动作或增加管理规则 |
+| `client/src/lib/bookmarkManager.test.ts` | 分类、书签移动、删除、排序和防止循环移动的回归测试 | 修改管理辅助函数后必须运行 |
 | `client/src/lib/standalone.ts` | 生成可离线双击打开的完整导航 HTML | 改离线导出页面功能 |
 | `client/src/contexts/ThemeContext.tsx` | 日夜模式状态 | 改默认主题或切换机制 |
 | `client/src/_core/hooks/useAuth.ts` | 当前登录用户、登录状态和退出操作 | 调整云端备份的登录体验 |
@@ -90,6 +97,7 @@ pnpm start
 | `vite.config.ts` | Vite 构建配置；`base: "./"` 保证相对路径 | 改构建目录或资源基路径 |
 | `netlify.toml`、`vercel.json`、`wrangler.toml` | 三个平台的静态部署配置 | 对应平台项目名或构建要求变化时 |
 | `client/src/lib/bookmarks.spreadsheet.test.ts` | CSV、XLSX 的分类路径重建和双向转换回归测试 | 修改表格格式后必须运行 `pnpm test` |
+| `external-backup-research.md` | 坚果云 WebDAV、Cloudflare KV/D1 的官方调研结论与安全边界 | 配置外部备份前阅读 |
 | `scripts/*.mjs` | 默认数据合并、导入回归、离线导出回归脚本 | 调整数据转换或回归验证时 |
 | `todo.md` | 每轮功能修改与验证记录 | 跟踪后续开发工作 |
 
@@ -165,7 +173,7 @@ archive-index-default-version
 
 ### 6.1 导入 JSON、浏览器 HTML、XLSX 或 CSV
 
-打开 **数据工具 → 导入 JSON / HTML / XLSX / CSV**，选择文件后系统会解析书签，并提示选择导入策略。
+打开顶部 **设置 → 备份与恢复 → 从本地文件恢复**，选择文件后系统会解析书签，并提示选择导入策略。
 
 | 策略 | 结果 | 适用场景 |
 | --- | --- | --- |
@@ -200,7 +208,7 @@ JSON 可以直接保留完整字段。HTML 导入遵循标准浏览器书签结�
 
 ### 6.3 从 LocalStorage 迁移到云端
 
-以前网页导入的数据仅保存在浏览器的 `archive-index-bookmarks` 键中，不会出现在项目文件夹。现在请打开 **数据工具**，完成登录后点击 **同步当前数据**。系统会把当前书签序列化为 JSON、保存到对象存储，并在 `bookmark_backups` 表中登记元数据。
+以前网页导入的数据仅保存在浏览器的 `archive-index-bookmarks` 键中，不会出现在项目文件夹。现在请打开 **设置 → 备份与恢复**，完成登录后点击 **一键云端备份**。系统会把当前书签序列化为 JSON、保存到对象存储，并在 `bookmark_backups` 表中登记元数据。
 
 之后，登录状态下导入 JSON、HTML、XLSX 或 CSV 并确认覆盖或增量导入时，系统会把**解析后的书签树**规范化为 JSON 并创建一份云端备份。备份列表显示最近 20 份记录；点击 **恢复** 会先通过用户所属关系校验，再读取备份并覆盖当前浏览器的 LocalStorage 数据。恢复前建议先导出 JSON 或 XLSX。
 
@@ -213,16 +221,51 @@ JSON 可以直接保留完整字段。HTML 导入遵循标准浏览器书签结�
 
 五种导出都要求上述校验：**JSON** 适合完整数据备份；**浏览器书签 HTML** 可被 Chrome、Edge、Firefox 等浏览器导入；**XLSX** 适合在电子表格中批量整理；**CSV** 适合文本、数据库与其他系统交换；**离线单页导航 HTML** 可本地双击打开，保留目录、搜索、主题、图标与数据工具等核心体验。离线导出文件中的账号校验同样是浏览器端便利校验，而非安全保护。
 
+### 6.5 设置模态：分类、书签、备份与恢复
+
+点击顶部 **设置** 可打开统一管理面板。它将原来的数据工具和新增的管理能力集中为四个页签。
+
+| 页签 | 可执行操作 | 数据影响与保护 |
+| --- | --- | --- |
+| 分类管理 | 创建子分类、重命名、移动、上移、下移、删除 | 删除分类会删除全部子分类与书签，操作前会要求确认；不能把分类移入自身或子分类 |
+| 书签管理 | 创建、编辑、删除、移动、上移、下移、全选、批量移动、批量删除 | 每次操作立刻写入当前浏览器 LocalStorage；网址仅接受 `http://` 或 `https://` |
+| 备份与恢复 | 下载 JSON/XLSX/CSV、本地文件恢复、一键云端备份、恢复最新或指定云端备份、恢复默认数据、一键清除 | 导出仍需要便利校验；恢复默认和清除操作都会要求确认；清除后会保存空目录状态 |
+| 外部备份 | 查看坚果云 WebDAV 与 Cloudflare KV/D1 的连接要求与当前状态 | 未配置服务端凭据时不会把任何书签发送到外部服务 |
+
+建议的安全顺序是：先创建本地 JSON 备份，再做批量删除、清除或恢复默认数据；如已登录，再额外执行一次云端备份。
+
+### 6.6 坚果云与 Cloudflare 外部备份
+
+当前版本保留了外部备份的设置入口与安全边界说明，但不会在浏览器保存外部服务密码或令牌。启用外部备份需要在全栈环境中为服务端提供对应凭据，并由后端发起请求。
+
+| 目标 | 推荐用途 | 需要的服务端配置 | 实现建议 |
+| --- | --- | --- | --- |
+| 坚果云 WebDAV | 保存独立的长期 JSON 文件副本 | WebDAV 地址、账户、**第三方应用密码** | 写入专用备份目录；不要使用网页登录密码 |
+| Cloudflare Workers KV | 保存最新规范化 JSON 快照 | 账户 ID、API Token、KV 命名空间 ID | 使用固定键保存当前快照，适合快速恢复 |
+| Cloudflare D1 | 保存备份历史、索引与元数据 | 建议使用受认证的 Worker 代理地址与访问密钥 | 不向浏览器开放任意 SQL；JSON 正文仍放对象存储或 KV |
+
+坚果云的第三方应用密码需要在其账户安全选项中生成；Cloudflare 官方建议外部应用访问 D1 时使用带认证和参数验证的 Worker 代理，而不是把数据库查询直接暴露给客户端。[5][6][7]
+
+在网页的 **设置 → 外部备份** 中，只会显示“已配置”或“待配置”状态以及可用的备份按钮。要录入或修改密钥，请使用项目管理面板的**安全密钥**区域；该区域会遮罩输入，不会将现有值返回给网页。变量名称如下：
+
+| 目标 | 安全密钥变量 |
+| --- | --- |
+| 坚果云 WebDAV | `NUTSTORE_WEBDAV_URL`、`NUTSTORE_WEBDAV_USERNAME`、`NUTSTORE_WEBDAV_APP_PASSWORD` |
+| Cloudflare KV | `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_KV_NAMESPACE_ID` |
+| Cloudflare D1 Worker 代理 | `CLOUDFLARE_D1_PROXY_URL`、`CLOUDFLARE_D1_PROXY_TOKEN` |
+
+> 不要在书签 URL、默认 JSON、前端源码、浏览器 LocalStorage 或普通设置表单中粘贴任何密钥。配置完成后重新启动服务，外部备份页会自动显示启用状态。
+
 ## 7. 响应式设计与使用方式
 
 页面为不同设备采用不同的目录浏览方式，并考虑到 3,710 个默认入口带来的长页面性能压力。
 
 | 视口 | 主要体验 |
 | --- | --- |
-| 1280px 及以上 | 固定左侧分类脊柱、自动多列网址卡片、完整的顶部工具栏 |
+| 1280px 及以上 | 固定左侧分类脊柱、自动多列网址卡片、完整的顶部工具栏与双列设置管理面板 |
 | 841px–1180px | 保留侧栏和双/多列书签网格，压缩内容区留白 |
 | 611px–840px | 顶部品牌区、横向分类索引、可展开的完整目录入口 |
-| 610px 及以下 | 单列卡片、放大输入框和触控目标、无文字工具按钮、竖向导出验证操作 |
+| 610px 及以下 | 单列卡片、放大输入框和触控目标、无文字设置按钮、全屏管理面板、竖向导出验证操作 |
 
 右下角向上箭头在页面滚动超过一定距离后出现；日夜模式会被浏览器记住。长目录区使用 `content-visibility` 减少离屏渲染，移动端分类索引支持横向滚动。
 
@@ -325,8 +368,10 @@ Netlify 的 Vite 指引同样使用构建命令与发布目录配置。[4]
 | 导出账号无法通过 | 使用账号 `admin`、密码 `123456`，并检查是否输入了额外空格 |
 | GitHub Pages 显示 404 | 确认 Actions 已成功推送 `gh-page`，再检查 Pages 的来源为 `gh-page / (root)` |
 | 部署后图标不显示 | 图标由第三方服务提供，网络或站点策略可能阻止请求；切换图标来源即可 |
-| 静态平台没有云端备份入口 | 静态托管不运行后端；请使用完整全栈部署环境 |
+| 静态平台没有云端备份或外部备份入口 | 静态托管不运行后端；请使用完整全栈部署环境 |
 | 想让导入文件落到服务器文件夹 | 项目使用对象存储，键前缀为 `bookmark-backups/`；这比临时服务器目录更适合线上持久化 |
+| 一键清除后刷新又出现默认书签 | 正常情况下不会出现：系统会写入 `archive-index-cleared`。若手动删除该键，首次加载逻辑会重新读取默认数据 |
+| 外部备份显示未连接 | 必须由全栈服务端配置坚果云应用密码或 Cloudflare 资源凭据；静态部署无法安全保存这些凭据 |
 
 ## References
 
@@ -337,3 +382,9 @@ Netlify 的 Vite 指引同样使用构建命令与发布目录配置。[4]
 [3] [Vercel Docs：Vite on Vercel](https://vercel.com/docs/frameworks/frontend/vite)
 
 [4] [Netlify Docs：Vite framework guide](https://docs.netlify.com/build/frameworks/framework-setup-guides/vite/)
+
+[5] [坚果云帮助：第三方应用授权 WebDAV 开启方法](https://help.jianguoyun.com/?p=2064)
+
+[6] [Cloudflare Docs：Workers KV](https://developers.cloudflare.com/kv/)
+
+[7] [Cloudflare Docs：Build an API to access D1 using a proxy Worker](https://developers.cloudflare.com/d1/tutorials/build-an-api-to-access-d1/)
