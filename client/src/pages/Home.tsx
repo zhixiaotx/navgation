@@ -48,6 +48,8 @@ import {
   BookmarkItem,
   BookmarkNode,
   countBookmarks,
+  createBlankBookmarkSpreadsheetBlob,
+  createBookmarkImportPreview,
   createBookmarkSpreadsheetBlob,
   fallbackIconSources,
   flattenBookmarks,
@@ -58,6 +60,7 @@ import {
   isFolder,
   mergeBookmarkNodes,
   normalizeArchive,
+  parseBookmarkJson,
   parseBrowserBookmarkHtml,
   parseBookmarkSpreadsheetFile,
   sampleBookmarks,
@@ -88,6 +91,7 @@ type PendingImport = {
   nodes: BookmarkNode[];
   fileName: string;
   source: "json" | "html" | "spreadsheet";
+  preview: ReturnType<typeof createBookmarkImportPreview>;
 };
 
 type SettingsTab = "manage" | "bookmarks" | "backup" | "external";
@@ -592,7 +596,7 @@ export default function Home() {
   function explainExternalBackup(provider: "nutstore" | "cloudflare") {
     const description = provider === "nutstore"
       ? "坚果云备份需要 WebDAV 地址、账户和应用密码；配置后将由服务端写入专用备份目录。"
-      : "Cloudflare 备份需要账户 ID、API 令牌及 KV 命名空间或 D1 数据库 ID；配置后由服务端执行加密连接。";
+      : "Cloudflare KV 需要账户 ID、API 令牌和 KV 命名空间；D1 需要受认证 Worker 代理 URL 与代理令牌。配置后由服务端发起请求。";
     toast.message("外部备份尚未连接", { description });
   }
 
@@ -614,11 +618,11 @@ export default function Home() {
       const isJson = lowerName.endsWith(".json");
       const isSpreadsheet = lowerName.endsWith(".xlsx") || lowerName.endsWith(".csv");
       const next = isJson
-        ? normalizeArchive(JSON.parse(await file.text()))
+        ? parseBookmarkJson(JSON.parse(await file.text()))
         : isSpreadsheet
           ? await parseBookmarkSpreadsheetFile(file)
           : parseBrowserBookmarkHtml(await file.text());
-      setPendingImport({ nodes: next, fileName: file.name, source: isJson ? "json" : isSpreadsheet ? "spreadsheet" : "html" });
+      setPendingImport({ nodes: next, fileName: file.name, source: isJson ? "json" : isSpreadsheet ? "spreadsheet" : "html", preview: createBookmarkImportPreview(next) });
     } catch (error) {
       toast.error("导入未完成", { description: error instanceof Error ? error.message : "无法读取该文件。" });
     } finally {
@@ -713,6 +717,16 @@ export default function Home() {
       toast.success(`已导出 ${format === "xlsx" ? "XLSX" : "CSV"} 数据`, { description: "表格中的“分类路径”可在导入时自动还原为多级分类。" });
     } catch (error) {
       toast.error("表格导出未完成", { description: error instanceof Error ? error.message : "无法生成表格文件。" });
+    }
+  }
+
+  async function downloadSpreadsheetTemplate(format: "xlsx" | "csv") {
+    try {
+      const blob = await createBlankBookmarkSpreadsheetBlob(format);
+      downloadBlob(`bookmark-import-template.${format}`, blob);
+      toast.success(`已下载 ${format.toUpperCase()} 空白模板`, { description: "请至少填写“名称”和以 http:// 或 https:// 开头的“网址”；“分类路径”使用 / 分隔多级目录。" });
+    } catch (error) {
+      toast.error("模板下载未完成", { description: error instanceof Error ? error.message : "无法生成空白模板。" });
     }
   }
 
@@ -829,7 +843,8 @@ export default function Home() {
               <section className="data-tools-section">
                 <div className="data-tools-section-head"><span className="eyebrow">IMPORT</span><h3>导入书签数据</h3></div>
                 <button className="data-tool-primary" type="button" onClick={() => { setShowDataTools(false); importRef.current?.click(); }}><FileUp size={17} />选择 JSON / HTML / XLSX / CSV 文件</button>
-                <p>支持浏览器书签 HTML、完整 JSON 以及表格文件。XLSX 和 CSV 里的“分类路径”会还原为左侧多级分类栏。</p>
+                <p>支持浏览器书签 HTML、本站归档 JSON、极光 Tab 原始 JSON、WebDesk 原始 JSON 和表格文件。解析后会先显示数据摘要与样本，确认后才会写入页面。</p>
+                <div className="template-downloads"><span>首次录入可下载空白模板：</span><button type="button" onClick={() => void downloadSpreadsheetTemplate("xlsx")}><FileSpreadsheet size={14} />XLSX 模板</button><button type="button" onClick={() => void downloadSpreadsheetTemplate("csv")}><FileSpreadsheet size={14} />CSV 模板</button></div>
               </section>
               <section className="data-tools-section">
                 <div className="data-tools-section-head"><span className="eyebrow">EXPORT</span><h3>导出当前书签</h3></div>
@@ -954,7 +969,8 @@ export default function Home() {
                         <div className="bookmark-manager-list">
                           {visibleManageableBookmarks.map(item => <div className="bookmark-manager-row" key={item.id}>
                             <label className="row-check"><input type="checkbox" checked={selectedBookmarkIds.has(item.id)} onChange={() => toggleSelectedBookmark(item.id)} aria-label={`选择 ${item.title}`} /></label>
-                            <div><strong>{item.title}</strong><span>{item.path.join(" / ") || "未分类"} · {item.url}</span></div>
+                            <BookmarkIcon item={item} source={iconSource} />
+                            <div className="manager-bookmark-details"><strong>{item.title}</strong><div className="manager-bookmark-meta"><span className="manager-bookmark-category">{item.path.join(" / ") || "未分类"}</span><a href={item.url} target="_blank" rel="noreferrer" title={item.url}>{item.url}</a></div>{item.description && <p>{item.description}</p>}</div>
                             <div className="row-actions"><button type="button" onClick={() => beginEditBookmark(item.id)} aria-label={`编辑 ${item.title}`}><Pencil size={14} /></button><button type="button" onClick={() => applyManagedTree(reorderBookmarkNode(bookmarks, item.id, -1), "已上移书签")} aria-label={`上移 ${item.title}`}>↑</button><button type="button" onClick={() => applyManagedTree(reorderBookmarkNode(bookmarks, item.id, 1), "已下移书签")} aria-label={`下移 ${item.title}`}>↓</button><button className="danger-icon" type="button" onClick={() => { if (window.confirm(`删除“${item.title}”？`)) applyManagedTree(removeBookmarkNodes(bookmarks, [item.id]), "已删除书签"); }} aria-label={`删除 ${item.title}`}><Trash2 size={14} /></button></div>
                           </div>)}
                         </div>
@@ -968,7 +984,7 @@ export default function Home() {
                   <section className="settings-panel" aria-label="备份与恢复">
                     <div className="settings-panel-copy"><span>BACKUP / RESTORE</span><h3>一键备份与恢复</h3><p>本地备份会下载 JSON 文件；受管理云端备份仅对登录用户私有可见。导出操作仍需管理员验证。</p></div>
                     <div className="settings-grid backup-grid">
-                      <article className="settings-card"><h4>本地备份与导入</h4><div className="stack-actions"><button className="settings-primary" type="button" onClick={() => requestExport("json")}><FileJson2 size={15} />下载本地 JSON 备份</button><button type="button" onClick={() => importRef.current?.click()}><FileUp size={15} />从本地文件恢复</button><button type="button" onClick={() => requestExport("xlsx")}><FileSpreadsheet size={15} />导出 XLSX</button><button type="button" onClick={() => requestExport("csv")}><FileSpreadsheet size={15} />导出 CSV</button></div></article>
+                      <article className="settings-card"><h4>本地备份与导入</h4><div className="stack-actions"><button className="settings-primary" type="button" onClick={() => requestExport("json")}><FileJson2 size={15} />下载本地 JSON 备份</button><button type="button" onClick={() => importRef.current?.click()}><FileUp size={15} />从本地文件恢复</button><button type="button" onClick={() => requestExport("xlsx")}><FileSpreadsheet size={15} />导出 XLSX</button><button type="button" onClick={() => requestExport("csv")}><FileSpreadsheet size={15} />导出 CSV</button><button type="button" onClick={() => void downloadSpreadsheetTemplate("xlsx")}><Download size={15} />下载 XLSX 空白模板</button><button type="button" onClick={() => void downloadSpreadsheetTemplate("csv")}><Download size={15} />下载 CSV 空白模板</button></div></article>
                       <article className="settings-card"><h4>受管理云端备份</h4>{isAuthenticated ? <><div className="inline-actions"><button className="settings-primary" type="button" onClick={syncCurrentBookmarks} disabled={saveCloudBackup.isPending || !archiveReady}><Cloud size={15} />{saveCloudBackup.isPending ? "正在备份…" : "一键云端备份"}</button>{cloudBackups.data?.[0] && <button type="button" onClick={() => restoreCloudBackup(cloudBackups.data![0].id)} disabled={accessCloudBackup.isPending}><RotateCcw size={15} />恢复最新备份</button>}</div><div className="cloud-backup-list" aria-live="polite">{cloudBackups.isLoading ? <p>正在读取云端备份…</p> : cloudBackups.data?.length ? <ul>{cloudBackups.data.map(backup => <li key={backup.id}><div><strong>{backup.fileName}</strong><span>{backup.bookmarkCount} 个入口 · {new Date(backup.createdAt).toLocaleString("zh-CN")}</span></div><button type="button" onClick={() => restoreCloudBackup(backup.id)} disabled={accessCloudBackup.isPending}><RotateCcw size={14} />恢复</button></li>)}</ul> : <p>暂无云端备份。</p>}</div></> : <button className="settings-primary" type="button" onClick={startLogin} disabled={authLoading}><LogIn size={15} />登录以启用云端备份</button>}</article>
                       <article className="settings-card danger-card"><h4>数据维护</h4><p>以下操作会修改当前浏览器中的书签数据，执行前请先创建本地或云端备份。</p><div className="stack-actions"><button type="button" onClick={restoreFactoryDefaults}><RefreshCcw size={15} />恢复出厂默认数据</button><button className="danger-button" type="button" onClick={clearAllBookmarks}><Eraser size={15} />一键清除当前数据</button></div></article>
                     </div>
@@ -978,11 +994,12 @@ export default function Home() {
                 {settingsTab === "external" && (
                   <section className="settings-panel" aria-label="外部备份">
                     <div className="settings-panel-copy"><span>EXTERNAL VAULTS</span><h3>外部备份连接</h3><p>外部备份的密钥通过项目安全密钥面板保存，不会写入浏览器、LocalStorage 或此设置表单。此页只显示是否已配置，并允许登录用户触发服务端备份。</p></div>
-                    <div className="settings-grid two-columns">
-                      <article className="settings-card external-card"><span className={`connection-status ${externalBackupStatus.data?.nutstore ? "is-connected" : ""}`}>{externalBackupStatus.data?.nutstore ? "已配置" : "待配置"}</span><h4>坚果云 WebDAV</h4><p>使用 WebDAV 将规范化 JSON 写入 `bookmark-navigation/` 专用目录。请在项目安全密钥面板配置地址、账号与第三方应用密码。</p><div className="stack-actions">{isAuthenticated ? <button className="settings-primary" type="button" onClick={() => syncExternalBackup("nutstore")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.nutstore}><Cloud size={15} />{saveExternalBackup.isPending ? "正在备份…" : "备份到坚果云"}</button> : <button className="settings-primary" type="button" onClick={startLogin}><LogIn size={15} />登录后备份</button>}<button type="button" onClick={() => explainExternalBackup("nutstore")}>安全密钥配置说明</button></div></article>
-                      <article className="settings-card external-card"><span className={`connection-status ${externalBackupStatus.data?.cloudflareKv || externalBackupStatus.data?.cloudflareD1 ? "is-connected" : ""}`}>{externalBackupStatus.data?.cloudflareKv || externalBackupStatus.data?.cloudflareD1 ? "已配置" : "待配置"}</span><h4>Cloudflare KV / D1</h4><p>KV 保存最新 JSON 快照；D1 通过受认证 Worker 代理写入历史元数据。请在项目安全密钥面板配置相应资源标识和令牌。</p><div className="stack-actions">{isAuthenticated ? <><button className="settings-primary" type="button" onClick={() => syncExternalBackup("cloudflare_kv")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.cloudflareKv}><Cloud size={15} />备份到 Cloudflare KV</button><button type="button" onClick={() => syncExternalBackup("cloudflare_d1")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.cloudflareD1}><Cloud size={15} />写入 Cloudflare D1</button></> : <button className="settings-primary" type="button" onClick={startLogin}><LogIn size={15} />登录后备份</button>}<button type="button" onClick={() => explainExternalBackup("cloudflare")}>安全密钥配置说明</button></div></article>
+                    <div className="settings-grid external-grid">
+                      <article className="settings-card external-card"><span className={`connection-status ${externalBackupStatus.data?.nutstore ? "is-connected" : ""}`}>{externalBackupStatus.data?.nutstore ? "已配置" : "待配置"}</span><h4>坚果云 WebDAV</h4><p>将规范化 JSON 写入 `bookmark-navigation/` 专用目录。</p><div className="external-config"><strong>安全参数</strong><code>NUTSTORE_WEBDAV_URL</code><span>WebDAV 根地址</span><code>NUTSTORE_WEBDAV_USERNAME</code><span>坚果云账号</span><code>NUTSTORE_WEBDAV_APP_PASSWORD</code><span>第三方应用密码</span></div><div className="stack-actions">{isAuthenticated ? <button className="settings-primary" type="button" onClick={() => syncExternalBackup("nutstore")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.nutstore}><Cloud size={15} />{saveExternalBackup.isPending ? "正在备份…" : "备份到坚果云"}</button> : <button className="settings-primary" type="button" onClick={startLogin}><LogIn size={15} />登录后备份</button>}<button type="button" onClick={() => explainExternalBackup("nutstore")}>查看安全设置方法</button></div></article>
+                      <article className="settings-card external-card"><span className={`connection-status ${externalBackupStatus.data?.cloudflareKv ? "is-connected" : ""}`}>{externalBackupStatus.data?.cloudflareKv ? "已配置" : "待配置"}</span><h4>Cloudflare KV</h4><p>保存最新的 JSON 快照，适合恢复最近一次数据。</p><div className="external-config"><strong>安全参数</strong><code>CLOUDFLARE_ACCOUNT_ID</code><span>Cloudflare 账户 ID</span><code>CLOUDFLARE_API_TOKEN</code><span>具备 KV 写入权限的 API Token</span><code>CLOUDFLARE_KV_NAMESPACE_ID</code><span>KV 命名空间 ID</span></div><div className="stack-actions">{isAuthenticated ? <button className="settings-primary" type="button" onClick={() => syncExternalBackup("cloudflare_kv")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.cloudflareKv}><Cloud size={15} />备份到 Cloudflare KV</button> : <button className="settings-primary" type="button" onClick={startLogin}><LogIn size={15} />登录后备份</button>}<button type="button" onClick={() => explainExternalBackup("cloudflare")}>查看安全设置方法</button></div></article>
+                      <article className="settings-card external-card"><span className={`connection-status ${externalBackupStatus.data?.cloudflareD1 ? "is-connected" : ""}`}>{externalBackupStatus.data?.cloudflareD1 ? "已配置" : "待配置"}</span><h4>Cloudflare D1</h4><p>经受认证的 Worker 代理写入备份历史元数据，不会向浏览器暴露 SQL。</p><div className="external-config"><strong>安全参数</strong><code>CLOUDFLARE_D1_PROXY_URL</code><span>受认证 Worker 代理地址</span><code>CLOUDFLARE_D1_PROXY_TOKEN</code><span>Worker 代理令牌</span></div><div className="stack-actions">{isAuthenticated ? <button className="settings-primary" type="button" onClick={() => syncExternalBackup("cloudflare_d1")} disabled={saveExternalBackup.isPending || !externalBackupStatus.data?.cloudflareD1}><Cloud size={15} />写入 Cloudflare D1</button> : <button className="settings-primary" type="button" onClick={startLogin}><LogIn size={15} />登录后备份</button>}<button type="button" onClick={() => explainExternalBackup("cloudflare")}>查看安全设置方法</button></div></article>
                     </div>
-                    <p className="settings-hint">配置入口：在项目管理面板的安全密钥区域填写对应变量。密钥字段会以遮罩形式管理，当前页面不显示、保存或回传任何密钥值。仅配置了所需变量的备份按钮才会启用。</p>
+                    <p className="settings-hint">配置入口：按 <code>docs/external-backup-environment.example.md</code> 中的变量模板，在项目管理面板的安全环境变量区域填写对应值。密钥字段会以遮罩形式管理，当前页面不显示、保存或回传任何密钥值。仅配置了所需变量的备份按钮才会启用。</p>
                   </section>
                 )}
               </div>
@@ -1059,8 +1076,10 @@ export default function Home() {
         <div className="import-overlay" role="dialog" aria-modal="true" aria-labelledby="import-choice-title">
           <section className="import-choice">
             <span className="eyebrow">导入已解析</span>
-            <h2 id="import-choice-title">检测到 {countBookmarks(pendingImport.nodes)} 个书签，{countFolders(pendingImport.nodes)} 个分类。</h2>
-            <p>导入结果会严格保留浏览器书签原有的分类层级和出现顺序。请选择本次数据如何写入资料馆。</p>
+            <h2 id="import-choice-title">解析完成，请确认导入内容。</h2>
+            <p>文件：<strong>{pendingImport.fileName}</strong>。导入结果会保留原始分类层级和出现顺序；确认写入前，请先检查下方数据摘要和样本。</p>
+            <div className="import-preview-stats" aria-label="导入数据摘要"><span><strong>{pendingImport.preview.bookmarkCount}</strong>个书签</span><span><strong>{pendingImport.preview.folderCount}</strong>个分类</span><span><strong>{pendingImport.preview.maxDepth}</strong>级目录</span></div>
+            <ul className="import-preview-samples" aria-label="导入书签样本">{pendingImport.preview.samples.map(item => <li key={item.id}><BookmarkIcon item={item} source={iconSource} /><div><strong>{item.title}</strong><span>{item.path.join(" / ") || "未分类"}</span><small>{item.url}</small></div></li>)}</ul>
             <div className="import-choice-actions">
               <button className="import-replace" type="button" onClick={() => applyImport("replace")}><strong>覆盖导入</strong><span>清空当前数据，完整使用本次书签。</span></button>
               <button className="import-merge" type="button" onClick={() => applyImport("merge")}><strong>增量导入</strong><span>合并同名分类，按 URL 去重，新增内容保留原始顺序。</span></button>

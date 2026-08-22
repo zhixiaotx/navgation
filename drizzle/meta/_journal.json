@@ -15,6 +15,13 @@
       "when": 1787415140000,
       "tag": "0001_create_users",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787417786741,
+      "tag": "0002_dizzy_robbie_robertson",
+      "breakpoints": true
     }
   ]
 }

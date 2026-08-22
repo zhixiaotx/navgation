@@ -254,7 +254,9 @@ JSON 可以直接保留完整字段。HTML 导入遵循标准浏览器书签结�
 | Cloudflare KV | `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_KV_NAMESPACE_ID` |
 | Cloudflare D1 Worker 代理 | `CLOUDFLARE_D1_PROXY_URL`、`CLOUDFLARE_D1_PROXY_TOKEN` |
 
-> 不要在书签 URL、默认 JSON、前端源码、浏览器 LocalStorage 或普通设置表单中粘贴任何密钥。配置完成后重新启动服务，外部备份页会自动显示启用状态。
+仓库中的 [`docs/external-backup-environment.example.md`](docs/external-backup-environment.example.md) 提供了**变量名、用途与填写模板，但不含任何真实值**。本地开发时请在未提交的运行环境中设置这些变量；在托管环境中，请通过平台的安全环境变量面板逐项创建同名变量。填写完成后重启服务，站内 **设置 → 外部备份** 会根据服务端可读的变量显示“已配置”或“待配置”。
+
+> 不要在书签 URL、默认 JSON、前端源码、浏览器 LocalStorage 或普通设置表单中粘贴任何密钥。不要提交 `.env` 或任何包含实际值的配置文件。
 
 ## 7. 响应式设计与使用方式
 

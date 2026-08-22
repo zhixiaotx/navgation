@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getExternalBackupStatus, saveExternalBackup } from "./externalBackups";
+import { getExternalBackupConfig, getExternalBackupStatus, saveExternalBackup } from "./externalBackups";
 
 const config = {
   nutstoreUrl: "https://dav.example.test/dav/",
@@ -18,6 +18,21 @@ describe("external backup adapters", () => {
   it("reports only configured targets without exposing secret values", () => {
     expect(getExternalBackupStatus(config)).toEqual({ nutstore: true, cloudflareKv: true, cloudflareD1: true });
     expect(getExternalBackupStatus({ cloudflareApiToken: "token" })).toEqual({ nutstore: false, cloudflareKv: false, cloudflareD1: false });
+  });
+
+  it("reads server environment values while keeping the public status secret-free", () => {
+    const resolved = getExternalBackupConfig({
+      NUTSTORE_WEBDAV_URL: " https://dav.example.test/dav/ ",
+      NUTSTORE_WEBDAV_USERNAME: " account@example.test ",
+      NUTSTORE_WEBDAV_APP_PASSWORD: "server-only-password",
+    });
+
+    expect(resolved).toMatchObject({
+      nutstoreUrl: "https://dav.example.test/dav/",
+      nutstoreUsername: "account@example.test",
+      nutstorePassword: "server-only-password",
+    });
+    expect(JSON.stringify(getExternalBackupStatus(resolved))).not.toContain("server-only-password");
   });
 
   it("writes a normalized snapshot to Nutstore and Cloudflare KV using server-side authorization", async () => {
