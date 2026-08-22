@@ -201,11 +201,7 @@ function FolderSection({
     <section className={`bookmark-section ${level > 0 ? "is-nested" : ""}`} id={`section-${folder.id}`}>
       <header className="section-heading">
         <span className="section-tab" />
-        <div>
-          <p>{level ? `第 ${level + 1} 级分类` : "分类目录"}</p>
-          <h2>{folder.title}</h2>
-        </div>
-        <span className="section-count">{subtreeCount.toString().padStart(2, "0")}</span>
+        <h2>{folder.title}</h2>
       </header>
       {visible.length > 0 && (
         <div className="bookmark-grid">
