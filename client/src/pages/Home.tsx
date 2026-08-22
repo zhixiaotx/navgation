@@ -934,7 +934,6 @@ export default function Home() {
                   <button type="button" onClick={() => { setShowDataTools(false); requestExport("csv"); }}><FileSpreadsheet size={16} /><span>CSV</span><small>通用交换</small></button>
                   <button type="button" onClick={() => { setShowDataTools(false); requestExport("standalone"); }}><Download size={16} /><span>离线导航</span><small>独立 HTML 页面</small></button>
                 </div>
-                <p>所有导出仍需输入管理员便利校验账号 <strong>admin</strong> 与密码 <strong>123456</strong>。</p>
               </section>
               <button className="data-tools-settings-link" type="button" onClick={() => { setShowDataTools(false); setShowTools(true); setSettingsTab("backup"); }}><Settings size={15} />更多备份、云端恢复与数据维护，请前往设置</button>
             </div>
