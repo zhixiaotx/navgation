@@ -131,16 +131,23 @@ function FolderTree({
   const count = countBookmarks(folder.children);
   return (
     <li>
-      <div className={`tree-row ${selectedId === folder.id ? "is-selected" : ""}`} style={{ paddingLeft: `${12 + level * 14}px` }}>
-        <button className="tree-expand" type="button" onClick={() => onToggle(folder.id)} aria-label={isOpen ? `收起 ${folder.title}` : `展开 ${folder.title}`}>
+      <button
+        className={`tree-row ${selectedId === folder.id ? "is-selected" : ""}`}
+        type="button"
+        style={{ paddingLeft: `${12 + level * 14}px` }}
+        onClick={() => { onToggle(folder.id); onSelect(folder.id); }}
+        aria-expanded={isOpen}
+        aria-label={`${isOpen ? "收起" : "展开"} ${folder.title}`}
+      >
+        <span className="tree-expand" aria-hidden="true">
           {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
-        <button className="tree-select" type="button" onClick={() => onSelect(folder.id)}>
+        </span>
+        <span className="tree-select">
           {isOpen ? <FolderOpen size={15} /> : <FolderClosed size={15} />}
           <span>{folder.title}</span>
           <small>{count}</small>
-        </button>
-      </div>
+        </span>
+      </button>
       {isOpen && (
         <ul className="tree-list child-tree">
           {folder.children.filter(isFolder).map(child => (
@@ -152,12 +159,17 @@ function FolderTree({
   );
 }
 
-function BookmarkCard({ item, iconSource }: { item: BookmarkItem; iconSource: IconSource }) {
+function BookmarkCard({ item, iconSource, sectionTitle }: { item: BookmarkItem & { path: string[] }; iconSource: IconSource; sectionTitle: string }) {
+  const category = item.path[item.path.length - 1] || sectionTitle;
   return (
     <a className="bookmark-card" href={item.url} target="_blank" rel="noreferrer">
       <BookmarkIcon item={item} source={iconSource} />
       <span className="bookmark-body">
         <span className="bookmark-title">{item.title}</span>
+        <span className="bookmark-meta">
+          <span className="bookmark-category">{category}</span>
+          <span className="bookmark-url">{getHostname(item.url)}</span>
+        </span>
       </span>
     </a>
   );
@@ -180,7 +192,7 @@ function FolderSection({ folder, iconSource, query }: { folder: BookmarkFolder; 
         <span className="section-count">{visible.length.toString().padStart(2, "0")}</span>
       </header>
       <div className="bookmark-grid">
-        {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} />)}
+        {visible.map(item => <BookmarkCard key={item.id} item={item} iconSource={iconSource} sectionTitle={folder.title} />)}
       </div>
     </section>
   );
