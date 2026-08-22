@@ -302,6 +302,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [engine, setEngine] = useState("bing");
   const [showTools, setShowTools] = useState(false);
+  const [showDataTools, setShowDataTools] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("manage");
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [newFolderTitle, setNewFolderTitle] = useState("");
@@ -323,6 +324,7 @@ export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const dataToolsTriggerRef = useRef<HTMLButtonElement>(null);
   const cloudBackups = trpc.bookmarkBackups.list.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
@@ -793,6 +795,11 @@ export default function Home() {
             <span>个人入口资料馆 · CATALOGUE</span>
           </div>
           <div className="topbar-actions">
+            <button ref={dataToolsTriggerRef} className="tool-trigger data-tools-trigger" type="button" onClick={() => setShowDataTools(true)} aria-haspopup="dialog">
+              <FileArchive size={16} />
+              <span>数据工具</span>
+              <ChevronDown size={14} />
+            </button>
             <button ref={settingsTriggerRef} className="tool-trigger" type="button" onClick={() => setShowTools(true)} aria-haspopup="dialog">
               <Settings size={16} />
               <span>设置</span>
@@ -804,6 +811,41 @@ export default function Home() {
             </button>
           </div>
         </header>
+
+        <Dialog open={showDataTools} onOpenChange={setShowDataTools}>
+          <DialogContent className="data-tools-modal" showCloseButton={false} onCloseAutoFocus={event => {
+            event.preventDefault();
+            dataToolsTriggerRef.current?.focus();
+          }}>
+            <header className="data-tools-head">
+              <div>
+                <span className="eyebrow">DATA TOOLS</span>
+                <DialogTitle className="data-tools-title">导入与导出</DialogTitle>
+                <DialogDescription className="data-tools-description">使用本地文件整理、备份或迁移书签。导入后可选择覆盖或递归增量合并，并自动生成多级分类。</DialogDescription>
+              </div>
+              <DialogClose asChild><button className="settings-close" type="button" aria-label="关闭数据工具"><X size={20} /></button></DialogClose>
+            </header>
+            <div className="data-tools-body">
+              <section className="data-tools-section">
+                <div className="data-tools-section-head"><span className="eyebrow">IMPORT</span><h3>导入书签数据</h3></div>
+                <button className="data-tool-primary" type="button" onClick={() => { setShowDataTools(false); importRef.current?.click(); }}><FileUp size={17} />选择 JSON / HTML / XLSX / CSV 文件</button>
+                <p>支持浏览器书签 HTML、完整 JSON 以及表格文件。XLSX 和 CSV 里的“分类路径”会还原为左侧多级分类栏。</p>
+              </section>
+              <section className="data-tools-section">
+                <div className="data-tools-section-head"><span className="eyebrow">EXPORT</span><h3>导出当前书签</h3></div>
+                <div className="data-export-grid">
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("json"); }}><FileJson2 size={16} /><span>JSON</span><small>完整备份</small></button>
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("html"); }}><FileArchive size={16} /><span>浏览器 HTML</span><small>Chrome / Edge / Firefox</small></button>
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("xlsx"); }}><FileSpreadsheet size={16} /><span>XLSX</span><small>表格编辑</small></button>
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("csv"); }}><FileSpreadsheet size={16} /><span>CSV</span><small>通用交换</small></button>
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("standalone"); }}><Download size={16} /><span>离线导航</span><small>独立 HTML 页面</small></button>
+                </div>
+                <p>所有导出仍需输入管理员便利校验账号 <strong>admin</strong> 与密码 <strong>123456</strong>。</p>
+              </section>
+              <button className="data-tools-settings-link" type="button" onClick={() => { setShowDataTools(false); setShowTools(true); setSettingsTab("backup"); }}><Settings size={15} />更多备份、云端恢复与数据维护，请前往设置</button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <nav className="responsive-index" aria-label="移动端书签分类">
           <button type="button" className={selectedFolder === "all" || isFiltering ? "is-active" : ""} onClick={() => selectFolder("all")}>
