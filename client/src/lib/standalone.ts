@@ -1,4 +1,5 @@
-import { BookmarkNode, IconSource } from "./bookmarks";
+import type { BookmarkNode, IconSource } from "./bookmarks";
+import { STANDALONE_FLOWER_LOGO } from "./standaloneLogo";
 
 function safeData(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
@@ -60,6 +61,7 @@ const OFFLINE_SPREADSHEET = String.raw`
 export function createStandaloneNavigation(bookmarks: BookmarkNode[], iconSource: IconSource, xlsxBundle = ""): string {
   const base = createStandaloneNavigationBase(bookmarks, iconSource);
   return base
+    .replace('<div class="mark"><svg viewBox="0 0 64 64"><path d="M11 12h9v40h-9zM27 6h9v52h-9zM43 15h9v34h-9z"/></svg></div>', `<div class="mark"><img src="${STANDALONE_FLOWER_LOGO}" alt="书签导航 Logo" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div>`)
     .replace("</head>", `<style>${OFFLINE_STYLE_OVERRIDES}</style></head>`)
     .replace("</body>", `<script>${xlsxBundle}</script><script>${OFFLINE_SPREADSHEET}</script><script>${OFFLINE_EXPORT_AUTH}</script></body>`);
 }

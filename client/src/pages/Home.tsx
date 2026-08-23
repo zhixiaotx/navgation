@@ -84,7 +84,7 @@ import {
 import { createStandaloneNavigation } from "@/lib/standalone";
 import { CardDensity, coerceDescriptionLineLimit, DescriptionLineLimit, resolveDescriptionVisibility } from "@/lib/bookmarkDisplayPreferences";
 
-const LOGO_URL = "/manus-storage/archive-index-logo_491f7249.png";
+const LOGO_URL = "/manus-storage/bookmark-flower-logo_2cec6eb6.jpg";
 const DEFAULT_BOOKMARKS_URL = "./data/default-bookmarks.json";
 const DEFAULT_DATA_VERSION = "2026-08-22";
 const EXPORT_USERNAME = "admin";
