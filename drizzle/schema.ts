@@ -32,7 +32,25 @@ export const bookmarkBackups = mysqlTable(
   table => [index("bookmark_backups_user_created_idx").on(table.userId, table.createdAt)],
 );
 
+/**
+ * User-editable connection metadata for external backups. Passwords, API tokens
+ * and Worker proxy tokens are deliberately excluded and stay server-side only.
+ */
+export const externalBackupSettings = mysqlTable("external_backup_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  nutstoreUrl: varchar("nutstoreUrl", { length: 1024 }),
+  nutstoreUsername: varchar("nutstoreUsername", { length: 255 }),
+  cloudflareAccountId: varchar("cloudflareAccountId", { length: 255 }),
+  cloudflareKvNamespaceId: varchar("cloudflareKvNamespaceId", { length: 255 }),
+  cloudflareD1ProxyUrl: varchar("cloudflareD1ProxyUrl", { length: 1024 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type BookmarkBackup = typeof bookmarkBackups.$inferSelect;
 export type InsertBookmarkBackup = typeof bookmarkBackups.$inferInsert;
+export type ExternalBackupSettings = typeof externalBackupSettings.$inferSelect;
+export type InsertExternalBackupSettings = typeof externalBackupSettings.$inferInsert;

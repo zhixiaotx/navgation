@@ -23,16 +23,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-
-      - name: Enable pnpm
-        run: corepack enable
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Check and build static site
-        run: pnpm check && pnpm build
+        run: npm run check && npm run build
 
       - name: Publish dist/public to gh-page branch
         uses: peaceiris/actions-gh-pages@v4
@@ -41,4 +39,3 @@ jobs:
           publish_branch: gh-page
           publish_dir: ./dist/public
           force_orphan: true
-

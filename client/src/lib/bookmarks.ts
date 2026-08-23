@@ -43,6 +43,13 @@ export type BookmarkFolder = {
 
 export type BookmarkNode = BookmarkFolder | BookmarkItem;
 
+export type BookmarkImportPreview = {
+  bookmarkCount: number;
+  folderCount: number;
+  maxDepth: number;
+  samples: Array<BookmarkItem & { path: string[] }>;
+};
+
 export type BookmarkArchive = {
   version: 1;
   title: string;
@@ -314,6 +321,144 @@ export function normalizeArchive(value: unknown): BookmarkNode[] {
   return normalizeNodes(raw);
 }
 
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function jsonText(record: Record<string, unknown>, keys: string[], fallback = ""): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return fallback;
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+/** 兼容极光 Tab 原始导出：categories + sites。 */
+function parseJgtabArchive(record: Record<string, unknown>): BookmarkNode[] | null {
+  if (!Array.isArray(record.categories) || !Array.isArray(record.sites)) return null;
+
+  const sites = record.sites;
+
+  const categories = record.categories
+    .map((category, index) => {
+      const categoryRecord = jsonRecord(category);
+      const title = typeof category === "string"
+        ? category.trim()
+        : categoryRecord ? jsonText(categoryRecord, ["name", "title", "label"], `未命名分类 ${index + 1}`) : "";
+      const key = typeof category === "string" ? category.trim() : categoryRecord ? jsonText(categoryRecord, ["id", "name", "title", "label"], title) : title;
+      return { key, title };
+    })
+    .filter(category => Boolean(category.title));
+
+  const folders: BookmarkFolder[] = categories.map((category, categoryIndex) => ({
+    id: `jgtab-folder-${categoryIndex + 1}-${makeId("source")}`,
+    type: "folder",
+    title: category.title,
+    children: sites.flatMap((rawSite, siteIndex) => {
+      const site = jsonRecord(rawSite);
+      if (!site) return [];
+      const siteCategory = jsonText(site, ["category", "categoryName", "group"]);
+      if (siteCategory !== category.key && siteCategory !== category.title) return [];
+      const url = jsonText(site, ["url", "link", "href"]);
+      if (!isHttpUrl(url)) return [];
+      return [{
+        id: `jgtab-site-${jsonText(site, ["id"], String(siteIndex + 1))}-${makeId("source")}`,
+        type: "bookmark" as const,
+        title: jsonText(site, ["name", "title"], getHostname(url) || "未命名书签"),
+        url,
+        description: jsonText(site, ["description", "desc", "summary"]) || undefined,
+      }];
+    }),
+  }));
+
+  return folders.length ? [{ id: `source-jgtab-${makeId("archive")}`, type: "folder", title: "极光Tab 导航", children: folders }] : null;
+}
+
+/** 兼容 WebDesk 原始导出：categoryTree 递归目录。 */
+function parseWebdeskArchive(record: Record<string, unknown>): BookmarkNode[] | null {
+  if (!Array.isArray(record.categoryTree)) return null;
+
+  const convertNode = (rawNode: unknown, path: string): BookmarkNode | null => {
+    const node = jsonRecord(rawNode);
+    if (!node) return null;
+    const title = jsonText(node, ["name", "title", "label"], "未命名项目");
+    if (Array.isArray(node.children)) {
+      return {
+        id: `webdesk-folder-${path}-${jsonText(node, ["id"], makeId("source"))}`.replace(/[^a-zA-Z0-9_-]/g, "-"),
+        type: "folder",
+        title,
+        children: node.children.flatMap((child, index) => {
+          const converted = convertNode(child, `${path}-${index + 1}`);
+          return converted ? [converted] : [];
+        }),
+      };
+    }
+
+    const url = jsonText(node, ["url", "link", "href"]);
+    if (!isHttpUrl(url)) return null;
+    return {
+      id: `webdesk-site-${path}-${jsonText(node, ["linkId", "id"], makeId("source"))}`.replace(/[^a-zA-Z0-9_-]/g, "-"),
+      type: "bookmark",
+      title,
+      url,
+      description: jsonText(node, ["description", "desc", "summary"]) || undefined,
+    };
+  };
+
+  const folders = record.categoryTree.flatMap((node, index) => {
+    const converted = convertNode(node, `root-${index + 1}`);
+    return converted && isFolder(converted) ? [converted] : [];
+  });
+
+  return folders.length ? [{ id: `source-webdesk-${makeId("archive")}`, type: "folder", title: "WebDesk 导航", children: folders }] : null;
+}
+
+/**
+ * 解析本站标准归档 JSON，以及极光 Tab、WebDesk 两种原始 JSON。
+ * 原始格式会在浏览器本地转换为统一树结构，导入后可直接生成多级分类栏。
+ */
+export function parseBookmarkJson(value: unknown): BookmarkNode[] {
+  try {
+    const normalized = normalizeArchive(value);
+    if (countBookmarks(normalized)) return normalized;
+  } catch {
+    // 标准归档不匹配时，继续检测已知的原始导出结构。
+  }
+
+  const record = jsonRecord(value);
+  const converted = record ? parseJgtabArchive(record) ?? parseWebdeskArchive(record) : null;
+  if (!converted || !countBookmarks(converted)) {
+    throw new Error("未识别到可用书签。JSON 需为本站归档、极光 Tab（categories + sites）或 WebDesk（categoryTree）格式。");
+  }
+  return converted;
+}
+
+/** 为导入确认窗口提供可读的数据摘要及少量样本。 */
+export function createBookmarkImportPreview(nodes: BookmarkNode[], sampleLimit = 6): BookmarkImportPreview {
+  let folderCount = 0;
+  let maxDepth = 0;
+  const inspect = (items: BookmarkNode[], depth: number) => {
+    for (const item of items) {
+      if (!isFolder(item)) continue;
+      folderCount += 1;
+      maxDepth = Math.max(maxDepth, depth);
+      inspect(item.children, depth + 1);
+    }
+  };
+  inspect(nodes, 1);
+  const entries = flattenBookmarks(nodes);
+  return {
+    bookmarkCount: entries.length,
+    folderCount,
+    maxDepth,
+    samples: entries.slice(0, sampleLimit),
+  };
+}
+
 export function parseBrowserBookmarkHtml(html: string): BookmarkNode[] {
   if (!/<dl\b/i.test(html) || !/<(?:a|h3)\b/i.test(html)) {
     throw new Error("该 HTML 文件不是标准浏览器书签导出文件。");
@@ -455,6 +600,7 @@ export const bookmarkSpreadsheetColumns = {
 
 export type BookmarkSpreadsheetFormat = "xlsx" | "csv";
 export type BookmarkSpreadsheetRow = Record<(typeof bookmarkSpreadsheetColumns)[keyof typeof bookmarkSpreadsheetColumns], string>;
+export const defaultSpreadsheetPathSeparator = "/";
 
 const spreadsheetHeaders = Object.values(bookmarkSpreadsheetColumns);
 
@@ -474,9 +620,9 @@ function readSpreadsheetCell(row: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
-function spreadsheetPath(value: string) {
+function spreadsheetPath(value: string, separator = defaultSpreadsheetPathSeparator) {
   return value
-    .split(/\s*\/\s*/)
+    .split(separator || defaultSpreadsheetPathSeparator)
     .map(segment => segment.trim())
     .filter(Boolean);
 }
@@ -500,7 +646,7 @@ export function bookmarkNodesToSpreadsheetRows(nodes: BookmarkNode[], ancestry: 
 /**
  * 将表格行按“分类路径”重新组装为多级目录。相同路径的分类会复用同一个文件夹，从而自动生成左侧树。
  */
-export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknown>>): BookmarkNode[] {
+export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknown>>, pathSeparator = defaultSpreadsheetPathSeparator): BookmarkNode[] {
   const root: BookmarkNode[] = [];
 
   for (const row of rows) {
@@ -508,7 +654,7 @@ export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknow
     if (!/^https?:\/\//i.test(url)) continue;
 
     const title = readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.title, "标题", "title", "name"]) || getHostname(url) || "未命名书签";
-    const path = spreadsheetPath(readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.categoryPath, "分类", "categoryPath", "category"]));
+    const path = spreadsheetPath(readSpreadsheetCell(row, [bookmarkSpreadsheetColumns.categoryPath, "分类", "categoryPath", "category"]), pathSeparator);
     let target = root;
 
     for (const segment of path) {
@@ -544,27 +690,30 @@ export function spreadsheetRowsToBookmarkNodes(rows: Array<Record<string, unknow
   return root;
 }
 
-export async function parseBookmarkSpreadsheetArrayBuffer(data: ArrayBuffer): Promise<BookmarkNode[]> {
+export async function parseBookmarkSpreadsheetArrayBuffer(data: ArrayBuffer, pathSeparator = defaultSpreadsheetPathSeparator): Promise<BookmarkNode[]> {
   const XLSX = await loadXlsx();
   const workbook = XLSX.read(data, { type: "array", cellDates: false });
   const firstSheet = workbook.SheetNames[0];
   if (!firstSheet) throw new Error("表格中没有可读取的工作表。");
   const sheet = workbook.Sheets[firstSheet];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
-  return spreadsheetRowsToBookmarkNodes(rows);
+  return spreadsheetRowsToBookmarkNodes(rows, pathSeparator);
 }
 
-export async function parseBookmarkSpreadsheetFile(file: Pick<File, "arrayBuffer">): Promise<BookmarkNode[]> {
-  return parseBookmarkSpreadsheetArrayBuffer(await file.arrayBuffer());
+export async function parseBookmarkSpreadsheetFile(file: Pick<File, "arrayBuffer">, pathSeparator = defaultSpreadsheetPathSeparator): Promise<BookmarkNode[]> {
+  return parseBookmarkSpreadsheetArrayBuffer(await file.arrayBuffer(), pathSeparator);
 }
 
 /** 生成含分类路径、名称、网址和可选图标字段的 XLSX 或带 UTF-8 BOM 的 CSV。 */
 export async function createBookmarkSpreadsheetBlob(bookmarks: BookmarkNode[], format: BookmarkSpreadsheetFormat): Promise<Blob> {
+  return createBookmarkSpreadsheetBlobFromRows(bookmarkNodesToSpreadsheetRows(bookmarks), format, "书签");
+}
+
+async function createBookmarkSpreadsheetBlobFromRows(rows: BookmarkSpreadsheetRow[], format: BookmarkSpreadsheetFormat, sheetName: string): Promise<Blob> {
   const XLSX = await loadXlsx();
-  const rows = bookmarkNodesToSpreadsheetRows(bookmarks);
   const sheet = XLSX.utils.json_to_sheet(rows, { header: spreadsheetHeaders });
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, "书签");
+  XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
 
   if (format === "csv") {
     const csv = XLSX.utils.sheet_to_csv(sheet);
@@ -575,4 +724,14 @@ export async function createBookmarkSpreadsheetBlob(bookmarks: BookmarkNode[], f
   return new Blob([binary], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
+}
+
+/** 生成仅含规范列头的 XLSX / CSV 空白模板，便于首次录入。 */
+export async function createBlankBookmarkSpreadsheetBlob(format: BookmarkSpreadsheetFormat): Promise<Blob> {
+  return createBookmarkSpreadsheetBlobFromRows([], format, "书签导入模板");
+}
+
+/** 生成含三层分类路径的 XLSX / CSV 样例，便于理解表格导入的分类还原规则。 */
+export async function createMultiLevelBookmarkSpreadsheetExampleBlob(format: BookmarkSpreadsheetFormat): Promise<Blob> {
+  return createBookmarkSpreadsheetBlobFromRows(bookmarkNodesToSpreadsheetRows(sampleBookmarks), format, "多级分类示例");
 }
