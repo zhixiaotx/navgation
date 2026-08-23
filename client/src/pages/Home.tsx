@@ -82,6 +82,7 @@ const DEFAULT_BOOKMARKS_URL = "./data/default-bookmarks.json";
 const DEFAULT_DATA_VERSION = "2026-08-22";
 const EXPORT_USERNAME = "admin";
 const EXPORT_PASSWORD = "123456";
+const EXPORT_AUTH_STORAGE_KEY = "archive-index-export-authorized";
 
 type ExportKind = "json" | "html" | "xlsx" | "csv" | "standalone";
 type PendingImport = {
@@ -302,6 +303,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [engine, setEngine] = useState("bing");
   const [showTools, setShowTools] = useState(false);
+  const [showDataTools, setShowDataTools] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("manage");
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [newFolderTitle, setNewFolderTitle] = useState("");
@@ -319,10 +321,12 @@ export default function Home() {
   const [pendingExport, setPendingExport] = useState<ExportKind | null>(null);
   const [exportUsername, setExportUsername] = useState("");
   const [exportPassword, setExportPassword] = useState("");
+  const [exportAuthorized, setExportAuthorized] = useState(() => localStorage.getItem(EXPORT_AUTH_STORAGE_KEY) === "true");
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const dataToolsTriggerRef = useRef<HTMLButtonElement>(null);
   const cloudBackups = trpc.bookmarkBackups.list.useQuery(undefined, {
     enabled: isAuthenticated,
     retry: false,
@@ -724,7 +728,19 @@ export default function Home() {
     }
   }
 
+  async function performExport(kind: ExportKind) {
+    if (kind === "json") exportJson();
+    if (kind === "html") exportHtml();
+    if (kind === "xlsx") await exportSpreadsheet("xlsx");
+    if (kind === "csv") await exportSpreadsheet("csv");
+    if (kind === "standalone") await exportStandalone();
+  }
+
   function requestExport(kind: ExportKind) {
+    if (exportAuthorized) {
+      void performExport(kind);
+      return;
+    }
     setExportUsername("");
     setExportPassword("");
     setPendingExport(kind);
@@ -733,18 +749,21 @@ export default function Home() {
   function verifyAndExport(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (exportUsername !== EXPORT_USERNAME || exportPassword !== EXPORT_PASSWORD) {
-      toast.error("账号或密码不正确", { description: "请使用管理员账号后再次导出。" });
+      toast.error("账号或密码不正确", { description: "请使用导出账号后再次尝试。" });
       return;
     }
-
     const selectedExport = pendingExport;
+    localStorage.setItem(EXPORT_AUTH_STORAGE_KEY, "true");
+    setExportAuthorized(true);
     setPendingExport(null);
     setExportPassword("");
-    if (selectedExport === "json") exportJson();
-    if (selectedExport === "html") exportHtml();
-    if (selectedExport === "xlsx") void exportSpreadsheet("xlsx");
-    if (selectedExport === "csv") void exportSpreadsheet("csv");
-    if (selectedExport === "standalone") void exportStandalone();
+    if (selectedExport) void performExport(selectedExport);
+  }
+
+  function logoutExportAuthorization() {
+    localStorage.removeItem(EXPORT_AUTH_STORAGE_KEY);
+    setExportAuthorized(false);
+    toast.success("已退出导出验证", { description: "下一次导出时需要重新输入账号和密码。" });
   }
 
   return (
@@ -793,6 +812,11 @@ export default function Home() {
             <span>个人入口资料馆 · CATALOGUE</span>
           </div>
           <div className="topbar-actions">
+            <button ref={dataToolsTriggerRef} className="tool-trigger data-tools-trigger" type="button" onClick={() => setShowDataTools(true)} aria-haspopup="dialog">
+              <FileArchive size={16} />
+              <span>数据工具</span>
+              <ChevronDown size={14} />
+            </button>
             <button ref={settingsTriggerRef} className="tool-trigger" type="button" onClick={() => setShowTools(true)} aria-haspopup="dialog">
               <Settings size={16} />
               <span>设置</span>
@@ -804,6 +828,41 @@ export default function Home() {
             </button>
           </div>
         </header>
+
+        <Dialog open={showDataTools} onOpenChange={setShowDataTools}>
+          <DialogContent className="data-tools-modal" showCloseButton={false} onCloseAutoFocus={event => {
+            event.preventDefault();
+            dataToolsTriggerRef.current?.focus();
+          }}>
+            <header className="data-tools-head">
+              <div>
+                <span className="eyebrow">DATA TOOLS</span>
+                <DialogTitle className="data-tools-title">导入与导出</DialogTitle>
+                <DialogDescription className="data-tools-description">使用本地文件整理、备份或迁移书签。导入后可选择覆盖或递归增量合并，并自动生成多级分类。</DialogDescription>
+              </div>
+              <DialogClose asChild><button className="settings-close" type="button" aria-label="关闭数据工具"><X size={20} /></button></DialogClose>
+            </header>
+            <div className="data-tools-body">
+              <section className="data-tools-section">
+                <div className="data-tools-section-head"><span className="eyebrow">IMPORT</span><h3>导入书签数据</h3></div>
+                <button className="data-tool-primary" type="button" onClick={() => { setShowDataTools(false); importRef.current?.click(); }}><FileUp size={17} />选择 JSON / HTML / XLSX / CSV 文件</button>
+                <p>支持浏览器书签 HTML、完整 JSON 以及表格文件。XLSX 和 CSV 里的“分类路径”会还原为左侧多级分类栏。</p>
+              </section>
+              <section className="data-tools-section">
+                <div className="data-tools-section-head"><span className="eyebrow">EXPORT</span><h3>导出当前书签</h3></div>
+                <div className="data-export-grid">
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("json"); }}><FileJson2 size={16} /><span>JSON</span><small>完整备份</small></button>
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("html"); }}><FileArchive size={16} /><span>浏览器 HTML</span><small>Chrome / Edge / Firefox</small></button>
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("xlsx"); }}><FileSpreadsheet size={16} /><span>XLSX</span><small>表格编辑</small></button>
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("csv"); }}><FileSpreadsheet size={16} /><span>CSV</span><small>通用交换</small></button>
+                  <button type="button" onClick={() => { setShowDataTools(false); requestExport("standalone"); }}><Download size={16} /><span>离线导航</span><small>独立 HTML 页面</small></button>
+                </div>
+                <p className="export-auth-status">{exportAuthorized ? <>导出验证已通过，可直接下载。<button type="button" className="export-logout" onClick={logoutExportAuthorization}>退出登录</button></> : <>所有导出需输入账号 <strong>admin</strong> 与密码 <strong>123456</strong>。</>}</p>
+              </section>
+              <button className="data-tools-settings-link" type="button" onClick={() => { setShowDataTools(false); setShowTools(true); setSettingsTab("backup"); }}><Settings size={15} />更多备份、云端恢复与数据维护，请前往设置</button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <nav className="responsive-index" aria-label="移动端书签分类">
           <button type="button" className={selectedFolder === "all" || isFiltering ? "is-active" : ""} onClick={() => selectFolder("all")}>
@@ -1030,15 +1089,15 @@ export default function Home() {
       {pendingExport && (
         <div className="import-overlay" role="dialog" aria-modal="true" aria-labelledby="export-auth-title">
           <form className="import-choice export-auth" onSubmit={verifyAndExport}>
-            <span className="eyebrow">EXPORT AUTHORIZATION</span>
-            <h2 id="export-auth-title">验证后导出{pendingExport === "json" ? " JSON 数据" : pendingExport === "html" ? "书签 HTML" : pendingExport === "xlsx" ? " XLSX 数据" : pendingExport === "csv" ? " CSV 数据" : "单页导航"}</h2>
-            <p>导出操作需要管理员验证。此验证仅在当前浏览器中进行，不会上传账号或密码。</p>
+            <span className="eyebrow">EXPORT LOGIN</span>
+            <h2 id="export-auth-title">登录后导出{pendingExport === "json" ? " JSON 数据" : pendingExport === "html" ? "书签 HTML" : pendingExport === "xlsx" ? " XLSX 数据" : pendingExport === "csv" ? " CSV 数据" : "单页导航"}</h2>
+            <p>此验证只用于当前浏览器的数据工具导出；验证成功后可直接导出，直到你选择退出登录。</p>
             <div className="export-credential-fields">
               <label>账号<input value={exportUsername} onChange={event => setExportUsername(event.target.value)} autoComplete="username" placeholder="请输入账号" required /></label>
               <label>密码<input value={exportPassword} onChange={event => setExportPassword(event.target.value)} type="password" autoComplete="current-password" placeholder="请输入密码" required /></label>
             </div>
             <div className="export-auth-actions">
-              <button className="confirm-export" type="submit">验证并导出</button>
+              <button className="confirm-export" type="submit">登录并导出</button>
               <button className="import-cancel" type="button" onClick={() => setPendingExport(null)}>取消</button>
             </div>
           </form>
