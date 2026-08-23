@@ -1,3 +1,3 @@
-import { STANDALONE_FLOWER_LOGO } from "./standaloneLogo";
+import { FLOWER_LOGO_URL } from "./standaloneLogo";
 
-export const FLOWER_LOGO_DATA_URL = STANDALONE_FLOWER_LOGO;
+export { FLOWER_LOGO_URL };

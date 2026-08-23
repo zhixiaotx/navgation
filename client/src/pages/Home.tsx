@@ -83,9 +83,9 @@ import {
 } from "@/lib/bookmarkManager";
 import { createStandaloneNavigation } from "@/lib/standalone";
 import { CardDensity, coerceDescriptionLineLimit, DescriptionLineLimit, resolveDescriptionVisibility } from "@/lib/bookmarkDisplayPreferences";
-import { FLOWER_LOGO_DATA_URL } from "@/lib/flowerLogo";
+import { FLOWER_LOGO_URL } from "@/lib/flowerLogo";
 
-const LOGO_URL = FLOWER_LOGO_DATA_URL;
+const LOGO_URL = FLOWER_LOGO_URL;
 const DEFAULT_BOOKMARKS_URL = "./data/default-bookmarks.json";
 const DEFAULT_DATA_VERSION = "2026-08-22";
 const EXPORT_USERNAME = "admin";
